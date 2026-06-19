@@ -20,7 +20,7 @@
     .gbody { margin-top: 6px; }
     .khead { display: flex; align-items: center; gap: 6px; cursor: pointer; border-top: 1px solid #eee; padding-top: 10px; margin-top: 10px; flex-wrap: wrap; row-gap: 4px; }
     .kactions { margin-left: auto; white-space: nowrap; flex-shrink: 0; }
-    .kdone { padding: 3px 10px; font-size: 11px; border: 1px solid #2a7; border-radius: 6px; background: #fff; color: #2a7; white-space: nowrap; cursor: pointer; }
+    .kdone { margin-left: 8px; padding: 3px 10px; font-size: 11px; border: 1px solid #2a7; border-radius: 6px; background: #fff; color: #2a7; white-space: nowrap; cursor: pointer; flex-shrink: 0; }
     .kbody { margin-top: 6px; }
     /* 予実2段グリッド */
     .hdrow, .daysrow { display: flex; gap: 3px; align-items: center; }
@@ -37,10 +37,10 @@
     .gnamerow { display: flex; align-items: center; }
     .gname { font-size: 16px; font-weight: bold; }
     .gmoto { color: #666; font-size: 13px; margin-bottom: 6px; }
-    .checks { display: flex; gap: 6px; margin: 4px 0 2px; flex-wrap: wrap; }
-    .chk { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; padding: 4px 8px; border: 1px solid #ccc; border-radius: 14px; background: #fafafa; color: #555; }
-    .chk.on { background: #e7f7ec; border-color: #2a7; color: #0a7a3a; font-weight: bold; }
-    .chk input { width: 16px; height: 16px; }
+    .checks { display: flex; gap: 5px; margin: 2px 0; flex-wrap: wrap; }
+    .chk { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; padding: 1px 6px; border: 1px solid #e0e0e0; border-radius: 12px; background: #fff; color: #999; }
+    .chk.on { background: #eef7f0; border-color: #8ccfa6; color: #2a7a4a; }
+    .chk input { width: 13px; height: 13px; }
     .kousyu { border-top: 1px solid #eee; padding-top: 10px; margin-top: 10px; }
     .krow { display: flex; justify-content: space-between; align-items: center; }
     .klabel { font-weight: bold; font-size: 14px; }
@@ -55,8 +55,9 @@
     .dlabel.sun { color: #d33; } .dlabel.sat { color: #36c; }
     .cell { width: 100%; height: 38px; border: 1px solid #ccc; border-radius: 8px; background: #fff; font-size: 17px; padding: 0; }
     .cell.maru { color: #0a0; border-color: #0a0; } .cell.bar { color: #999; }
-    .bulk { display: flex; gap: 6px; margin: 4px 0; }
+    .bulk { display: flex; gap: 6px; margin: 4px 0; flex-wrap: wrap; }
     .bulk button { flex: 1; padding: 6px; font-size: 12px; border: 1px solid #ccc; border-radius: 8px; background: #f7f7f7; color: #333; }
+    .bulk .asplan { flex-basis: 100%; background: #eafaef; border-color: #2a7; color: #0a7a3a; font-weight: bold; }
     .save { width: 100%; padding: 10px; font-size: 14px; border: none; border-radius: 8px; background: #00b900; color: #fff; margin-top: 6px; }
     .form { background: #fafafe; border: 1px solid #e0e0ee; border-radius: 8px; padding: 10px; margin-top: 8px; }
     .addtoggle { width: 100%; padding: 8px; font-size: 13px; border: 1px solid #00b900; border-radius: 8px; background: #fff; color: #00a000; margin-top: 10px; }
@@ -192,22 +193,22 @@
       data.genba.forEach(function (g) { list.appendChild(makeCard(g)); });
     }
 
-    // 工事ごとの3チェック（指示・安全書類・注文書提出）。変更で即保存
-    function makeChecks(g) {
+    // 工種ごとの3チェック（指示・安全書類・注文書提出）。変更で即保存。控えめ表示
+    function makeChecks(k) {
       var wrap = el('div', 'checks');
       var defs = [['shiji', '指示'], ['anzen', '安全書類'], ['chumon', '注文書提出']];
       function send() {
         jsonp('action=saveChecks&' + q({
-          user: profile.displayName, genbaId: g.genbaId,
-          shiji: g.shiji ? 1 : 0, anzen: g.anzen ? 1 : 0, chumon: g.chumon ? 1 : 0
+          user: profile.displayName, kousyuId: k.kousyuId,
+          shiji: k.shiji ? 1 : 0, anzen: k.anzen ? 1 : 0, chumon: k.chumon ? 1 : 0
         }));
       }
       defs.forEach(function (d) {
         var key = d[0];
         var lab = el('label', 'chk');
-        var cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!g[key];
-        cb.onchange = function () { g[key] = cb.checked; lab.classList.toggle('on', cb.checked); send(); };
-        lab.classList.toggle('on', !!g[key]);
+        var cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!k[key];
+        cb.onchange = function () { k[key] = cb.checked; lab.classList.toggle('on', cb.checked); send(); };
+        lab.classList.toggle('on', !!k[key]);
         lab.appendChild(cb); lab.appendChild(document.createTextNode(d[1]));
         wrap.appendChild(lab);
       });
@@ -234,7 +235,6 @@
       };
 
       body.appendChild(el('div', 'gmoto', '元請：' + (g.moto || '-')));
-      body.appendChild(makeChecks(g));   // 工事ごとのチェック
 
       // 現場の稼働前／稼働中を計算して、タグとカードの色を更新
       function recalcGenba() {
@@ -283,16 +283,16 @@
 
       var box = el('div', 'kousyu');
 
-      // 見出し（タップで開閉）＋ 完了・編集
+      // 見出し（タップで開閉）。完了は工種名の右、編集は右端
       var head = el('div', 'khead');
       var caret = el('span', 'caret', '▼');
       var label = el('div', 'klabel', k.shumoku + '：' + (k.ginoukou || '（技能工未設定）'));
       var tag = el('span', 'tag');
-      var actions = el('div', 'kactions');
       var done = el('button', 'kdone', '✓ 完了');
+      var actions = el('div', 'kactions');
       var edit = el('button', 'editlink', '編集');
-      actions.appendChild(done); actions.appendChild(edit);
-      head.appendChild(caret); head.appendChild(label); head.appendChild(tag); head.appendChild(actions);
+      actions.appendChild(edit);
+      head.appendChild(caret); head.appendChild(label); head.appendChild(tag); head.appendChild(done); head.appendChild(actions);
       box.appendChild(head);
 
       var body = el('div', 'kbody');   // 開閉対象
@@ -336,6 +336,9 @@
         }
       };
 
+      // 工種ごとのチェック（控えめ表示）
+      body.appendChild(makeChecks(k));
+
       // 曜日見出し行
       var hd = el('div', 'hdrow');
       hd.appendChild(el('span', 'rl', ''));
@@ -372,9 +375,13 @@
       updateTag();
 
       var bulk = el('div', 'bulk');
-      var bNone = el('button', '', '予定 全部−'); bNone.onclick = function () { yCells.forEach(function (c) { setCell(c, '－'); }); syncLive(); };
-      var bClr = el('button', '', 'クリア（予定・実績）'); bClr.onclick = function () { yCells.concat(jCells).forEach(function (c) { setCell(c, ''); }); syncLive(); };
-      bulk.appendChild(bNone); bulk.appendChild(bClr); body.appendChild(bulk);
+      // 予定どおり＝実績に予定をそのままコピー（一番よく使う）
+      var bSame = el('button', 'asplan', '予定どおり（実績←予定）');
+      bSame.onclick = function () { for (var i = 0; i < 7; i++) setCell(jCells[i], yCells[i].dataset.val || ''); syncLive(); };
+      var bYNone = el('button', '', '予定 全部−'); bYNone.onclick = function () { yCells.forEach(function (c) { setCell(c, '－'); }); syncLive(); };
+      var bJNone = el('button', '', '実績 全部−'); bJNone.onclick = function () { jCells.forEach(function (c) { setCell(c, '－'); }); syncLive(); };
+      var bClr = el('button', '', 'クリア'); bClr.onclick = function () { yCells.concat(jCells).forEach(function (c) { setCell(c, ''); }); syncLive(); };
+      bulk.appendChild(bSame); bulk.appendChild(bYNone); bulk.appendChild(bJNone); bulk.appendChild(bClr); body.appendChild(bulk);
 
       var saveLabel = 'この工種を保存（予定・実績）';
       var save = el('button', 'save', saveLabel);
