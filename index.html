@@ -27,6 +27,10 @@
     .gnamerow { display: flex; align-items: center; }
     .gname { font-size: 16px; font-weight: bold; }
     .gmoto { color: #666; font-size: 13px; margin-bottom: 6px; }
+    .checks { display: flex; gap: 6px; margin: 4px 0 2px; flex-wrap: wrap; }
+    .chk { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; padding: 4px 8px; border: 1px solid #ccc; border-radius: 14px; background: #fafafa; color: #555; }
+    .chk.on { background: #e7f7ec; border-color: #2a7; color: #0a7a3a; font-weight: bold; }
+    .chk input { width: 16px; height: 16px; }
     .kousyu { border-top: 1px solid #eee; padding-top: 10px; margin-top: 10px; }
     .krow { display: flex; justify-content: space-between; align-items: center; }
     .klabel { font-weight: bold; font-size: 14px; }
@@ -204,6 +208,28 @@
       data.genba.forEach(function (g) { list.appendChild(makeCard(g)); });
     }
 
+    // 工事ごとの3チェック（指示・安全書類・注文書提出）。変更で即保存
+    function makeChecks(g) {
+      var wrap = el('div', 'checks');
+      var defs = [['shiji', '指示'], ['anzen', '安全書類'], ['chumon', '注文書提出']];
+      function send() {
+        jsonp('action=saveChecks&' + q({
+          user: profile.displayName, genbaId: g.genbaId,
+          shiji: g.shiji ? 1 : 0, anzen: g.anzen ? 1 : 0, chumon: g.chumon ? 1 : 0
+        }));
+      }
+      defs.forEach(function (d) {
+        var key = d[0];
+        var lab = el('label', 'chk');
+        var cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!g[key];
+        cb.onchange = function () { g[key] = cb.checked; lab.classList.toggle('on', cb.checked); send(); };
+        lab.classList.toggle('on', !!g[key]);
+        lab.appendChild(cb); lab.appendChild(document.createTextNode(d[1]));
+        wrap.appendChild(lab);
+      });
+      return wrap;
+    }
+
     function makeCard(g) {
       var card = el('div', 'card');
       var nameRow = el('div', 'gnamerow');
@@ -212,6 +238,9 @@
       nameRow.appendChild(gtag);
       card.appendChild(nameRow);
       card.appendChild(el('div', 'gmoto', '元請：' + (g.moto || '-')));
+
+      // 工事ごとのチェック（指示・安全書類・注文書提出）
+      card.appendChild(makeChecks(g));
 
       // 現場の稼働前／稼働中を計算して、タグとカードの色を更新
       function recalcGenba() {
