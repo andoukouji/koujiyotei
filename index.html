@@ -11,9 +11,8 @@
     .head { max-width: 600px; margin: 0 auto 8px; }
     h1 { font-size: 17px; margin: 4px 0; }
     .sub { color: #666; font-size: 13px; }
-    .card { background: #fff; border-radius: 12px; padding: 14px; box-shadow: 0 1px 4px rgba(0,0,0,.1); max-width: 600px; margin: 10px auto; border-left: 6px solid transparent; }
-    .card.live { border-left-color: #0a0; }
-    .card.pre { background: #f1f1f1; border-left-color: #bbb; }
+    .card { background: #fff; border-radius: 12px; padding: 14px; box-shadow: 0 1px 4px rgba(0,0,0,.1); max-width: 600px; margin: 10px auto; }
+    .card.pre { background: #f1f1f1; }
     .card.pre .gname { color: #888; }
     .gnamerow { display: flex; align-items: center; }
     .gname { font-size: 16px; font-weight: bold; }
@@ -45,6 +44,8 @@
     .confirm { width: 100%; padding: 10px; font-size: 14px; border: none; border-radius: 8px; background: #2a7; color: #fff; margin-top: 6px; }
     .delbtn { width: 100%; padding: 9px; font-size: 13px; border: 1px solid #c33; border-radius: 8px; background: #fff; color: #c33; margin-top: 6px; }
     #status { max-width: 600px; margin: 8px auto; padding: 10px; border-radius: 8px; background: #eef; font-size: 13px; white-space: pre-wrap; }
+    .toast { position: fixed; left: 50%; top: 70px; transform: translateX(-50%); background: #2a7; color: #fff; padding: 10px 18px; border-radius: 20px; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,.25); z-index: 9999; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90%; text-align: center; }
+    .toast.show { opacity: 1; }
   </style>
 </head>
 <body>
@@ -275,19 +276,19 @@
 
       var confirm = el('button', 'confirm', existing ? 'この工種を更新' : 'この工種を登録');
       confirm.onclick = function () {
-        if (!selShu.value) { setStatus('種目を選んでください。'); return; }
-        confirm.disabled = true; setStatus('処理中…');
+        if (!selShu.value) { toast('種目を選んでください'); return; }
+        confirm.disabled = true; confirm.textContent = '処理中…';
         var gino = picked.join('|');
         if (existing) {
           jsonp('action=updateKousyu&' + q({ user: profile.displayName, kousyuId: existing.kousyuId, shumoku: selShu.value, ginoukou: gino }), function () {
             existing.shumoku = selShu.value; existing.ginoukou = picked.join('、');
             if (hooks.labelEl) hooks.labelEl.textContent = existing.shumoku + '：' + (existing.ginoukou || '（技能工未設定）');
-            setStatus('工種を更新しました。'); hooks.onUpdated();
+            toast('✓ 工種を更新しました'); hooks.onUpdated();
           });
         } else {
           jsonp('action=addKousyu&' + q({ user: profile.displayName, genbaId: g.genbaId, shumoku: selShu.value, ginoukou: gino }), function (res) {
             var newK = { kousyuId: res.kousyuId, shumoku: res.shumoku, ginoukou: res.ginoukou, yotei: ['', '', '', '', '', '', ''] };
-            setStatus('工種を追加しました。'); hooks.onAdded(newK);
+            toast('✓ 工種を追加しました'); hooks.onAdded(newK);
           });
         }
       };
@@ -297,9 +298,9 @@
         var del = el('button', 'delbtn', 'この工種を削除');
         del.onclick = function () {
           if (!window.confirm('「' + existing.shumoku + '」を削除します。よろしいですか？')) return;
-          del.disabled = true; setStatus('削除中…');
+          del.disabled = true; del.textContent = '削除中…';
           jsonp('action=deleteKousyu&' + q({ user: profile.displayName, kousyuId: existing.kousyuId }), function () {
-            setStatus('工種を削除しました。'); hooks.onDeleted();
+            toast('✓ 工種を削除しました'); hooks.onDeleted();
           });
         };
         form.appendChild(del);
@@ -312,6 +313,12 @@
     function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
     function opt(val, text) { var o = document.createElement('option'); o.value = val; o.textContent = text; return o; }
     function setStatus(msg) { document.getElementById('status').textContent = msg; }
+    function toast(msg) {
+      var t = document.getElementById('toast');
+      if (!t) { t = el('div', 'toast'); t.id = 'toast'; document.body.appendChild(t); }
+      t.textContent = msg; t.classList.add('show');
+      clearTimeout(toast._t); toast._t = setTimeout(function () { t.classList.remove('show'); }, 1800);
+    }
   </script>
 </body>
 </html>
