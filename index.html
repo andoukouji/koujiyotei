@@ -17,6 +17,10 @@
     .kousyu { border-top: 1px solid #eee; padding-top: 10px; margin-top: 10px; }
     .krow { display: flex; justify-content: space-between; align-items: center; }
     .klabel { font-weight: bold; font-size: 14px; }
+    .tag { font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 8px; white-space: nowrap; }
+    .tag.pre { background: #eee; color: #999; }
+    .tag.live { background: #e7f7ec; color: #0a0; }
+    .save.done { background: #2a7 !important; }
     .editlink { font-size: 12px; color: #06c; background: none; border: none; padding: 4px 6px; }
     .days { display: flex; gap: 3px; margin: 6px 0; }
     .day { flex: 1; text-align: center; }
@@ -147,7 +151,10 @@
     function makeKousyu(g, k) {
       var box = el('div', 'kousyu');
       var row = el('div', 'krow');
+      var left = el('div'); left.style.display = 'flex'; left.style.alignItems = 'center';
       var label = el('div', 'klabel', k.shumoku + '：' + (k.ginoukou || '（技能工未設定）'));
+      var tag = el('span', 'tag');
+      left.appendChild(label); left.appendChild(tag);
       var edit = el('button', 'editlink', '編集');
       var editHolder = el('div'); editHolder.style.display = 'none';
       edit.onclick = function () {
@@ -161,7 +168,7 @@
           editHolder.style.display = 'block';
         } else { editHolder.style.display = 'none'; }
       };
-      row.appendChild(label); row.appendChild(edit);
+      row.appendChild(left); row.appendChild(edit);
       box.appendChild(row); box.appendChild(editHolder);
 
       var days = el('div', 'days'); var cells = [];
@@ -169,22 +176,30 @@
         var col = el('div', 'day');
         col.appendChild(el('div', 'dlabel' + (i === 0 ? ' sun' : (i === 6 ? ' sat' : '')), DAYS[i]));
         var btn = el('button', 'cell'); setCell(btn, k.yotei[i] || '');
-        btn.onclick = (function (b) { return function () { cycle(b); }; })(btn);
+        btn.onclick = (function (b) { return function () { cycle(b); updateTag(); }; })(btn);
         col.appendChild(btn); days.appendChild(col); cells.push(btn);
       }
       box.appendChild(days);
 
+      function updateTag() {
+        var has = cells.some(function (c) { return c.dataset.val === '〇' || c.dataset.val === '－'; });
+        tag.textContent = has ? '稼働中' : '稼働前';
+        tag.className = 'tag ' + (has ? 'live' : 'pre');
+      }
+      updateTag();
+
       var bulk = el('div', 'bulk');
-      var bNone = el('button', '', '今週なし（全部 −）'); bNone.onclick = function () { cells.forEach(function (c) { setCell(c, '－'); }); };
-      var bClr = el('button', '', 'クリア'); bClr.onclick = function () { cells.forEach(function (c) { setCell(c, ''); }); };
+      var bNone = el('button', '', '今週なし（全部 −）'); bNone.onclick = function () { cells.forEach(function (c) { setCell(c, '－'); }); updateTag(); };
+      var bClr = el('button', '', 'クリア'); bClr.onclick = function () { cells.forEach(function (c) { setCell(c, ''); }); updateTag(); };
       bulk.appendChild(bNone); bulk.appendChild(bClr); box.appendChild(bulk);
 
       var save = el('button', 'save', 'この工種の予定を保存');
       save.onclick = function () {
         var yotei = cells.map(function (c) { return c.dataset.val || ''; });
         k.yotei = yotei;
-        setStatus('「' + g.name + '／' + k.shumoku + '」を保存しました。');  // 即時表示
-        // 待たずに送信（速く感じるように）
+        // 押したボタン自体に即フィードバック（1.5秒で戻る）
+        save.textContent = '✓ 保存しました'; save.classList.add('done');
+        setTimeout(function () { save.textContent = 'この工種の予定を保存'; save.classList.remove('done'); }, 1500);
         jsonp('action=saveYotei&' + q({ user: profile.displayName, genbaId: g.genbaId, kousyuId: k.kousyuId, weekStart: weekStart, yotei: yotei.join(',') }));
       };
       box.appendChild(save);
