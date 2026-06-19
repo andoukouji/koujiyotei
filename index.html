@@ -14,6 +14,13 @@
     .weektoggle { display: flex; gap: 6px; margin: 8px 0 2px; }
     .weektoggle button { flex: 1; padding: 8px; font-size: 14px; border: 1px solid #00b900; border-radius: 8px; background: #fff; color: #00a000; }
     .weektoggle button.on { background: #00b900; color: #fff; font-weight: bold; }
+    .modetoggle { display: flex; gap: 6px; margin: 6px 0 2px; }
+    .modetoggle button { flex: 1; padding: 8px; font-size: 14px; border: 1px solid #bbb; border-radius: 8px; background: #fff; color: #555; }
+    .modetoggle button.onY { background: #00b900; color: #fff; font-weight: bold; border-color: #00b900; }
+    .modetoggle button.onJ { background: #e69500; color: #fff; font-weight: bold; border-color: #e69500; }
+    .modehint { font-size: 12px; color: #777; margin: 2px 0 0; }
+    .days.jmode .cell { border-color: #e69500; }
+    .days.jmode .cell.maru { color: #e69500; border-color: #e69500; }
     .card { background: #fff; border-radius: 12px; padding: 14px; box-shadow: 0 1px 4px rgba(0,0,0,.1); max-width: 600px; margin: 10px auto; }
     .card.pre { background: #f1f1f1; }
     .card.pre .gname { color: #888; }
@@ -59,6 +66,11 @@
       <button id="btnThis" class="on">今週</button>
       <button id="btnNext">来週</button>
     </div>
+    <div class="modetoggle" id="modetoggle" style="display:none;">
+      <button id="btnYotei" class="onY">予定</button>
+      <button id="btnJisseki">実績（当日の稼働）</button>
+    </div>
+    <div class="modehint" id="modehint"></div>
     <div class="sub" id="week"></div>
   </div>
   <div id="list"></div>
@@ -73,6 +85,9 @@
     var profile = {}, weekStart = '';
     var thisWeekStart = '', nextWeekStart = '', targetWeekStart = '';
     var masters = { shumoku: [], ginoukou: [] };
+    var inputMode = 'yotei';   // 'yotei'=予定 / 'jisseki'=実績
+    var currentData = null;    // 直近に描画したデータ（モード切替で再描画する用）
+    function blank7() { return ['', '', '', '', '', '', '']; }
 
     if (typeof woff === 'undefined') {
       setStatus('WOFF SDKが読み込めていません。');
@@ -145,6 +160,25 @@
     document.getElementById('btnThis').onclick = function () { switchWeek(thisWeekStart); };
     document.getElementById('btnNext').onclick = function () { switchWeek(nextWeekStart); };
 
+    // 予定／実績モードの切替
+    function switchMode(m) {
+      if (m === inputMode) return;
+      inputMode = m;
+      updateModeToggle();
+      if (currentData) render(currentData, false);   // 同じデータをその時のモードで描き直す
+    }
+    function updateModeToggle() {
+      var mt = document.getElementById('modetoggle');
+      mt.style.display = 'flex';
+      document.getElementById('btnYotei').className = (inputMode === 'yotei') ? 'onY' : '';
+      document.getElementById('btnJisseki').className = (inputMode === 'jisseki') ? 'onJ' : '';
+      document.getElementById('modehint').textContent = (inputMode === 'jisseki')
+        ? '実績モード：当日に実際に稼働した日を入れます（オレンジ）'
+        : '予定モード：この先の予定を入れます（緑）';
+    }
+    document.getElementById('btnYotei').onclick = function () { switchMode('yotei'); };
+    document.getElementById('btnJisseki').onclick = function () { switchMode('jisseki'); };
+
     // weekStart（日曜）から「6/28〜7/4」のような週の範囲文字列を作る
     function weekRangeLabel(ws) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(ws)) return ws;
@@ -155,6 +189,8 @@
 
     function render(data, fromCache) {
       if (data.masters) masters = data.masters;
+      currentData = data;
+      updateModeToggle();
       weekStart = data.weekStart;
       if (data.thisWeekStart) thisWeekStart = data.thisWeekStart;
       if (data.nextWeekStart) nextWeekStart = data.nextWeekStart;
@@ -262,43 +298,50 @@
       row.appendChild(left); row.appendChild(right);
       box.appendChild(row); box.appendChild(editHolder);
 
-      var days = el('div', 'days'); var cells = [];
+      // 予定／実績の配列を必ず用意（キャッシュの古いデータ対策）
+      if (!k.yotei) k.yotei = blank7();
+      if (!k.jisseki) k.jisseki = blank7();
+      var arr = (inputMode === 'jisseki') ? k.jisseki : k.yotei;   // いま編集する側
+
+      var days = el('div', 'days' + (inputMode === 'jisseki' ? ' jmode' : '')); var cells = [];
       for (var i = 0; i < 7; i++) {
         var col = el('div', 'day');
         col.appendChild(el('div', 'dlabel' + (i === 0 ? ' sun' : (i === 6 ? ' sat' : '')), DAYS[i]));
-        var btn = el('button', 'cell'); setCell(btn, k.yotei[i] || '');
+        var btn = el('button', 'cell'); setCell(btn, arr[i] || '');
         btn.onclick = (function (b) { return function () { cycle(b); syncLive(); }; })(btn);
         col.appendChild(btn); days.appendChild(col); cells.push(btn);
       }
       box.appendChild(days);
 
+      // 工種タグ・現場タグは「予定」基準（実績モードで見ても稼働中/前は変わらない）
       function updateTag() {
-        var has = cells.some(function (c) { return c.dataset.val === '〇' || c.dataset.val === '－'; });
+        var has = (k.yotei || []).some(function (v) { return v === '〇' || v === '－'; });
         tag.textContent = has ? '稼働中' : '稼働前';
         tag.className = 'tag ' + (has ? 'live' : 'pre');
       }
-      // 工種タグ・現場タグを画面の今の状態に合わせて更新（保存はしない）
+      // 画面の今の状態を、編集中モードの配列へ書き戻す（保存はしない）
       function syncLive() {
-        k.yotei = cells.map(function (c) { return c.dataset.val || ''; });
+        var vals = cells.map(function (c) { return c.dataset.val || ''; });
+        if (inputMode === 'jisseki') k.jisseki = vals; else k.yotei = vals;
         updateTag();
         if (recalcGenba) recalcGenba();
       }
       updateTag();
 
       var bulk = el('div', 'bulk');
-      var bNone = el('button', '', '今週なし（全部 −）'); bNone.onclick = function () { cells.forEach(function (c) { setCell(c, '－'); }); syncLive(); };
+      var noneLabel = (inputMode === 'jisseki') ? '稼働なし（全部 −）' : '今週なし（全部 −）';
+      var bNone = el('button', '', noneLabel); bNone.onclick = function () { cells.forEach(function (c) { setCell(c, '－'); }); syncLive(); };
       var bClr = el('button', '', 'クリア'); bClr.onclick = function () { cells.forEach(function (c) { setCell(c, ''); }); syncLive(); };
       bulk.appendChild(bNone); bulk.appendChild(bClr); box.appendChild(bulk);
 
-      var save = el('button', 'save', 'この工種の予定を保存');
+      var saveLabel = (inputMode === 'jisseki') ? 'この工種の実績を保存' : 'この工種の予定を保存';
+      var save = el('button', 'save', saveLabel);
       save.onclick = function () {
-        var yotei = cells.map(function (c) { return c.dataset.val || ''; });
-        k.yotei = yotei;
-        if (recalcGenba) recalcGenba();
-        // 押したボタン自体に即フィードバック（1.5秒で戻る）
+        syncLive();   // 表示中モードの値を配列へ反映
+        // 予定・実績の両方を送って保存（編集していない側もそのまま保存される）
         save.textContent = '✓ 保存しました'; save.classList.add('done');
-        setTimeout(function () { save.textContent = 'この工種の予定を保存'; save.classList.remove('done'); }, 1500);
-        jsonp('action=saveYotei&' + q({ user: profile.displayName, genbaId: g.genbaId, kousyuId: k.kousyuId, weekStart: weekStart, yotei: yotei.join(',') }));
+        setTimeout(function () { save.textContent = saveLabel; save.classList.remove('done'); }, 1500);
+        jsonp('action=saveYotei&' + q({ user: profile.displayName, genbaId: g.genbaId, kousyuId: k.kousyuId, weekStart: weekStart, yotei: (k.yotei || blank7()).join(','), jisseki: (k.jisseki || blank7()).join(',') }));
       };
       box.appendChild(save);
       return box;
@@ -356,7 +399,7 @@
           });
         } else {
           jsonp('action=addKousyu&' + q({ user: profile.displayName, genbaId: g.genbaId, shumoku: selShu.value, ginoukou: gino }), function (res) {
-            var newK = { kousyuId: res.kousyuId, shumoku: res.shumoku, ginoukou: res.ginoukou, yotei: ['', '', '', '', '', '', ''] };
+            var newK = { kousyuId: res.kousyuId, shumoku: res.shumoku, ginoukou: res.ginoukou, yotei: ['', '', '', '', '', '', ''], jisseki: ['', '', '', '', '', '', ''] };
             toast('✓ 工種を追加しました'); hooks.onAdded(newK);
           });
         }
