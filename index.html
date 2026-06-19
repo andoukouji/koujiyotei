@@ -333,4 +333,15 @@
 
     function cycle(btn) { var v = btn.dataset.val || ''; setCell(btn, v === '' ? '〇' : (v === '〇' ? '－' : '')); }
     function setCell(btn, v) { btn.dataset.val = v; btn.textContent = v === '' ? '・' : v; btn.className = 'cell' + (v === '〇' ? ' maru' : (v === '－' ? ' bar' : '')); }
-    fu
+    function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+    function opt(val, text) { var o = document.createElement('option'); o.value = val; o.textContent = text; return o; }
+    function setStatus(msg) { document.getElementById('status').textContent = msg; }
+    function toast(msg) {
+      var t = document.getElementById('toast');
+      if (!t) { t = el('div', 'toast'); t.id = 'toast'; document.body.appendChild(t); }
+      t.textContent = msg; t.classList.add('show');
+      clearTimeout(toast._t); toast._t = setTimeout(function () { t.classList.remove('show'); }, 1800);
+    }
+  </script>
+</body>
+</html>
