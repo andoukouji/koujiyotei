@@ -252,9 +252,11 @@
       var addGi = el('button', 'smallbtn', '＋追加');
       rowG.appendChild(selGi); rowG.appendChild(addGi); form.appendChild(rowG);
 
-      var rowN = el('div', 'row'); rowN.appendChild(el('span', '', '新規：'));
+      var rowN = el('div', 'row'); rowN.style.flexWrap = 'nowrap'; rowN.appendChild(el('span', '', '新規：'));
       var txtNew = document.createElement('input'); txtNew.type = 'text'; txtNew.placeholder = '一覧に無い技能工';
+      txtNew.style.flex = '1'; txtNew.style.minWidth = '0';
       var addNew = el('button', 'smallbtn', '＋追加');
+      addNew.style.flexShrink = '0';
       rowN.appendChild(txtNew); rowN.appendChild(addNew); form.appendChild(rowN);
 
       var chips = el('div', 'row'); form.appendChild(chips);
