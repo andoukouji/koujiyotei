@@ -15,7 +15,9 @@
     .gname { font-size: 16px; font-weight: bold; }
     .gmoto { color: #666; font-size: 13px; margin-bottom: 6px; }
     .kousyu { border-top: 1px solid #eee; padding-top: 10px; margin-top: 10px; }
-    .klabel { font-weight: bold; font-size: 14px; margin-bottom: 4px; }
+    .krow { display: flex; justify-content: space-between; align-items: center; }
+    .klabel { font-weight: bold; font-size: 14px; }
+    .editlink { font-size: 12px; color: #06c; background: none; border: none; padding: 4px 6px; }
     .days { display: flex; gap: 3px; margin: 6px 0; }
     .day { flex: 1; text-align: center; }
     .dlabel { font-size: 11px; color: #888; }
@@ -26,14 +28,15 @@
     .bulk button { flex: 1; padding: 6px; font-size: 12px; border: 1px solid #ccc; border-radius: 8px; background: #f7f7f7; color: #333; }
     .save { width: 100%; padding: 10px; font-size: 14px; border: none; border-radius: 8px; background: #00b900; color: #fff; margin-top: 6px; }
     .save:disabled { background: #bbb; }
-    .addbox { border-top: 1px dashed #ccc; margin-top: 10px; padding-top: 10px; }
-    .addtoggle { width: 100%; padding: 8px; font-size: 13px; border: 1px solid #00b900; border-radius: 8px; background: #fff; color: #00a000; }
+    .form { background: #fafafe; border: 1px solid #e0e0ee; border-radius: 8px; padding: 10px; margin-top: 8px; }
+    .addtoggle { width: 100%; padding: 8px; font-size: 13px; border: 1px solid #00b900; border-radius: 8px; background: #fff; color: #00a000; margin-top: 10px; }
     .row { display: flex; gap: 6px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
     select, input[type=text] { padding: 8px; font-size: 14px; border: 1px solid #ccc; border-radius: 6px; }
     .chip { background: #eef; border-radius: 14px; padding: 4px 10px; font-size: 13px; display: inline-flex; align-items: center; gap: 4px; }
     .chip b { cursor: pointer; color: #c33; }
     .smallbtn { padding: 8px 12px; font-size: 13px; border: 1px solid #ccc; border-radius: 6px; background: #f3f3f3; }
-    .addconfirm { width: 100%; padding: 10px; font-size: 14px; border: none; border-radius: 8px; background: #2a7; color: #fff; margin-top: 6px; }
+    .confirm { width: 100%; padding: 10px; font-size: 14px; border: none; border-radius: 8px; background: #2a7; color: #fff; margin-top: 6px; }
+    .delbtn { width: 100%; padding: 9px; font-size: 13px; border: 1px solid #c33; border-radius: 8px; background: #fff; color: #c33; margin-top: 6px; }
     #status { max-width: 600px; margin: 8px auto; padding: 10px; border-radius: 8px; background: #eef; font-size: 13px; white-space: pre-wrap; }
   </style>
 </head>
@@ -58,17 +61,17 @@
     if (typeof woff === 'undefined') {
       setStatus('WOFF SDKが読み込めていません。');
     } else {
+      setStatus('読み込み中…');
       woff.init({ woffId: WOFF_ID })
         .then(function () { return woff.getProfile(); })
         .then(function (p) {
           profile = p;
           document.getElementById('who').textContent = p.displayName + ' さんの担当現場';
-          loadMasters(function () { loadMyGenba(); });
+          loadAll();   // 1回の通信で現場・予定・マスタをまとめて取得
         })
         .catch(function (e) { setStatus('認証エラー: ' + e); });
     }
 
-    // ── JSONP共通 ──
     function jsonp(params, onOk) {
       var cb = 'cb_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
       window[cb] = function (resp) { delete window[cb]; if (!resp.ok) { setStatus('エラー: ' + resp.error); return; } onOk(resp.data); };
@@ -78,15 +81,14 @@
       document.body.appendChild(s);
     }
 
-    function loadMasters(done) {
-      jsonp('action=masters', function (d) { masters = d; done(); });
-    }
-    function loadMyGenba() {
+    function loadAll() {
       setStatus('読み込み中…');
-      jsonp('action=myGenba&user=' + encodeURIComponent(profile.displayName), function (d) { render(d); });
+      jsonp('action=init&user=' + encodeURIComponent(profile.displayName), function (d) {
+        masters = d.masters || { shumoku: [], ginoukou: [] };
+        render(d);
+      });
     }
 
-    // ── 描画 ──
     function render(data) {
       weekStart = data.weekStart;
       document.getElementById('week').textContent = '対象週（日曜始まり）：' + weekStart;
@@ -100,19 +102,38 @@
       var card = el('div', 'card');
       card.appendChild(el('div', 'gname', g.name));
       card.appendChild(el('div', 'gmoto', '元請：' + (g.moto || '-')));
-
-      if (!g.kousyu.length) {
-        card.appendChild(el('div', 'sub', '※ まだ工種がありません。下の「＋ 工種を追加」から登録してください。'));
-      }
+      if (!g.kousyu.length) card.appendChild(el('div', 'sub', '※ まだ工種がありません。下の「＋ 工種を追加」から登録してください。'));
       g.kousyu.forEach(function (k) { card.appendChild(makeKousyu(g, k)); });
 
-      card.appendChild(makeAddBox(g));
+      // 工種を追加
+      var toggle = el('button', 'addtoggle', '＋ 工種を追加');
+      var formHolder = el('div'); formHolder.style.display = 'none';
+      toggle.onclick = function () {
+        if (formHolder.style.display === 'none') {
+          formHolder.innerHTML = '';
+          formHolder.appendChild(buildKousyuForm(g, null));
+          formHolder.style.display = 'block';
+        } else { formHolder.style.display = 'none'; }
+      };
+      card.appendChild(toggle); card.appendChild(formHolder);
       return card;
     }
 
     function makeKousyu(g, k) {
       var box = el('div', 'kousyu');
-      box.appendChild(el('div', 'klabel', k.shumoku + '：' + (k.ginoukou || '（技能工未設定）')));
+      var row = el('div', 'krow');
+      row.appendChild(el('div', 'klabel', k.shumoku + '：' + (k.ginoukou || '（技能工未設定）')));
+      var edit = el('button', 'editlink', '編集');
+      var editHolder = el('div'); editHolder.style.display = 'none';
+      edit.onclick = function () {
+        if (editHolder.style.display === 'none') {
+          editHolder.innerHTML = '';
+          editHolder.appendChild(buildKousyuForm(g, k));
+          editHolder.style.display = 'block';
+        } else { editHolder.style.display = 'none'; }
+      };
+      row.appendChild(edit); box.appendChild(row);
+      box.appendChild(editHolder);
 
       var days = el('div', 'days'); var cells = [];
       for (var i = 0; i < 7; i++) {
@@ -140,22 +161,21 @@
       return box;
     }
 
-    function makeAddBox(g) {
-      var box = el('div', 'addbox');
-      var toggle = el('button', 'addtoggle', '＋ 工種を追加');
-      var form = el('div'); form.style.display = 'none';
-      toggle.onclick = function () { form.style.display = (form.style.display === 'none') ? 'block' : 'none'; };
-      box.appendChild(toggle); box.appendChild(form);
+    // 工種の追加／編集フォーム（existing が無ければ追加、あれば編集）
+    function buildKousyuForm(g, existing) {
+      var form = el('div', 'form');
+      var picked = [];
+      if (existing && existing.ginoukou) {
+        existing.ginoukou.split(/[、,]/).forEach(function (s) { s = s.trim(); if (s) picked.push(s); });
+      }
 
-      // 種目select
       var rowS = el('div', 'row'); rowS.appendChild(el('span', '', '種目：'));
       var selShu = document.createElement('select');
       selShu.appendChild(opt('', '選択'));
       masters.shumoku.forEach(function (s) { selShu.appendChild(opt(s, s)); });
+      if (existing) selShu.value = existing.shumoku;
       rowS.appendChild(selShu); form.appendChild(rowS);
 
-      // 技能工select + 追加
-      var picked = [];
       var rowG = el('div', 'row'); rowG.appendChild(el('span', '', '技能工：'));
       var selGi = document.createElement('select');
       selGi.appendChild(opt('', '選択'));
@@ -163,48 +183,57 @@
       var addGi = el('button', 'smallbtn', '＋追加');
       rowG.appendChild(selGi); rowG.appendChild(addGi); form.appendChild(rowG);
 
-      // 新規技能工
       var rowN = el('div', 'row'); rowN.appendChild(el('span', '', '新規：'));
       var txtNew = document.createElement('input'); txtNew.type = 'text'; txtNew.placeholder = '一覧に無い技能工';
       var addNew = el('button', 'smallbtn', '＋追加');
       rowN.appendChild(txtNew); rowN.appendChild(addNew); form.appendChild(rowN);
 
       var chips = el('div', 'row'); form.appendChild(chips);
-      function redrawChips() {
+      function redraw() {
         chips.innerHTML = '';
         picked.forEach(function (name, idx) {
           var c = el('span', 'chip'); c.appendChild(document.createTextNode(name));
           var x = document.createElement('b'); x.textContent = '×';
-          x.onclick = function () { picked.splice(idx, 1); redrawChips(); };
+          x.onclick = function () { picked.splice(idx, 1); redraw(); };
           c.appendChild(x); chips.appendChild(c);
         });
       }
-      addGi.onclick = function () { var v = selGi.value; if (v && picked.indexOf(v) < 0) { picked.push(v); redrawChips(); } };
-      addNew.onclick = function () { var v = txtNew.value.trim(); if (v && picked.indexOf(v) < 0) { picked.push(v); txtNew.value = ''; redrawChips(); } };
+      redraw();
+      addGi.onclick = function () { var v = selGi.value; if (v && picked.indexOf(v) < 0) { picked.push(v); redraw(); } };
+      addNew.onclick = function () { var v = txtNew.value.trim(); if (v && picked.indexOf(v) < 0) { picked.push(v); txtNew.value = ''; redraw(); } };
 
-      var confirm = el('button', 'addconfirm', 'この工種を登録');
+      var confirm = el('button', 'confirm', existing ? 'この工種を更新' : 'この工種を登録');
       confirm.onclick = function () {
         if (!selShu.value) { setStatus('種目を選んでください。'); return; }
         confirm.disabled = true;
-        post({ type: 'addKousyu', user: profile.displayName, genbaId: g.genbaId, shumoku: selShu.value, ginoukou: picked },
-          function () { setStatus('工種「' + selShu.value + '」を追加しました。'); loadMyGenba(); });
+        var payload = existing
+          ? { type: 'updateKousyu', user: profile.displayName, kousyuId: existing.kousyuId, shumoku: selShu.value, ginoukou: picked }
+          : { type: 'addKousyu', user: profile.displayName, genbaId: g.genbaId, shumoku: selShu.value, ginoukou: picked };
+        post(payload, function () { setStatus('保存しました。'); loadAll(); });
       };
       form.appendChild(confirm);
-      return box;
+
+      if (existing) {
+        var del = el('button', 'delbtn', 'この工種を削除');
+        del.onclick = function () {
+          if (!window.confirm('「' + existing.shumoku + '」を削除します。よろしいですか？')) return;
+          del.disabled = true;
+          post({ type: 'deleteKousyu', user: profile.displayName, kousyuId: existing.kousyuId },
+            function () { setStatus('工種を削除しました。'); loadAll(); });
+        };
+        form.appendChild(del);
+      }
+      return form;
     }
 
-    // ── 保存（no-cors POST）──
     function post(payload, onDone) {
       fetch(GAS_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) })
         .then(function () { onDone(); })
         .catch(function (e) { setStatus('保存エラー: ' + e); });
     }
 
-    // ── セル状態 ──
     function cycle(btn) { var v = btn.dataset.val || ''; setCell(btn, v === '' ? '〇' : (v === '〇' ? '－' : '')); }
     function setCell(btn, v) { btn.dataset.val = v; btn.textContent = v === '' ? '・' : v; btn.className = 'cell' + (v === '〇' ? ' maru' : (v === '－' ? ' bar' : '')); }
-
-    // ── DOM補助 ──
     function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
     function opt(val, text) { var o = document.createElement('option'); o.value = val; o.textContent = text; return o; }
     function setStatus(msg) { document.getElementById('status').textContent = msg; }
