@@ -11,7 +11,11 @@
     .head { max-width: 600px; margin: 0 auto 8px; }
     h1 { font-size: 17px; margin: 4px 0; }
     .sub { color: #666; font-size: 13px; }
-    .card { background: #fff; border-radius: 12px; padding: 14px; box-shadow: 0 1px 4px rgba(0,0,0,.1); max-width: 600px; margin: 10px auto; }
+    .card { background: #fff; border-radius: 12px; padding: 14px; box-shadow: 0 1px 4px rgba(0,0,0,.1); max-width: 600px; margin: 10px auto; border-left: 6px solid transparent; }
+    .card.live { border-left-color: #0a0; }
+    .card.pre { background: #f1f1f1; border-left-color: #bbb; }
+    .card.pre .gname { color: #888; }
+    .gnamerow { display: flex; align-items: center; }
     .gname { font-size: 16px; font-weight: bold; }
     .gmoto { color: #666; font-size: 13px; margin-bottom: 6px; }
     .kousyu { border-top: 1px solid #eee; padding-top: 10px; margin-top: 10px; }
@@ -120,13 +124,27 @@
 
     function makeCard(g) {
       var card = el('div', 'card');
-      card.appendChild(el('div', 'gname', g.name));
+      var nameRow = el('div', 'gnamerow');
+      nameRow.appendChild(el('div', 'gname', g.name));
+      var gtag = el('span', 'tag');
+      nameRow.appendChild(gtag);
+      card.appendChild(nameRow);
       card.appendChild(el('div', 'gmoto', '元請：' + (g.moto || '-')));
+
+      // 現場の稼働前／稼働中を計算して、タグとカードの色を更新
+      function recalcGenba() {
+        var has = (g.kousyu || []).some(function (k) {
+          return (k.yotei || []).some(function (v) { return v === '〇' || v === '－'; });
+        });
+        gtag.textContent = has ? '稼働中' : '稼働前';
+        gtag.className = 'tag ' + (has ? 'live' : 'pre');
+        card.className = 'card ' + (has ? 'live' : 'pre');
+      }
 
       var holder = el('div');
       var emptyNote = el('div', 'sub', '※ まだ工種がありません。下の「＋ 工種を追加」から登録してください。');
       if (!g.kousyu.length) holder.appendChild(emptyNote);
-      g.kousyu.forEach(function (k) { holder.appendChild(makeKousyu(g, k)); });
+      g.kousyu.forEach(function (k) { holder.appendChild(makeKousyu(g, k, recalcGenba)); });
       card.appendChild(holder);
 
       var toggle = el('button', 'addtoggle', '＋ 工種を追加');
@@ -137,18 +155,21 @@
           formHolder.appendChild(buildForm(g, null, {
             onAdded: function (newK) {
               if (emptyNote.parentNode) emptyNote.remove();
-              holder.appendChild(makeKousyu(g, newK));
+              g.kousyu.push(newK);
+              holder.appendChild(makeKousyu(g, newK, recalcGenba));
               formHolder.style.display = 'none';
+              recalcGenba();
             }
           }));
           formHolder.style.display = 'block';
         } else { formHolder.style.display = 'none'; }
       };
       card.appendChild(toggle); card.appendChild(formHolder);
+      recalcGenba();
       return card;
     }
 
-    function makeKousyu(g, k) {
+    function makeKousyu(g, k, recalcGenba) {
       var box = el('div', 'kousyu');
       var row = el('div', 'krow');
       var left = el('div'); left.style.display = 'flex'; left.style.alignItems = 'center';
@@ -163,7 +184,7 @@
           editHolder.appendChild(buildForm(g, k, {
             labelEl: label,
             onUpdated: function () { editHolder.style.display = 'none'; },
-            onDeleted: function () { box.remove(); }
+            onDeleted: function () { box.remove(); var i = g.kousyu.indexOf(k); if (i >= 0) g.kousyu.splice(i, 1); recalcGenba(); }
           }));
           editHolder.style.display = 'block';
         } else { editHolder.style.display = 'none'; }
@@ -176,7 +197,7 @@
         var col = el('div', 'day');
         col.appendChild(el('div', 'dlabel' + (i === 0 ? ' sun' : (i === 6 ? ' sat' : '')), DAYS[i]));
         var btn = el('button', 'cell'); setCell(btn, k.yotei[i] || '');
-        btn.onclick = (function (b) { return function () { cycle(b); updateTag(); }; })(btn);
+        btn.onclick = (function (b) { return function () { cycle(b); syncLive(); }; })(btn);
         col.appendChild(btn); days.appendChild(col); cells.push(btn);
       }
       box.appendChild(days);
@@ -186,17 +207,24 @@
         tag.textContent = has ? '稼働中' : '稼働前';
         tag.className = 'tag ' + (has ? 'live' : 'pre');
       }
+      // 工種タグ・現場タグを画面の今の状態に合わせて更新（保存はしない）
+      function syncLive() {
+        k.yotei = cells.map(function (c) { return c.dataset.val || ''; });
+        updateTag();
+        if (recalcGenba) recalcGenba();
+      }
       updateTag();
 
       var bulk = el('div', 'bulk');
-      var bNone = el('button', '', '今週なし（全部 −）'); bNone.onclick = function () { cells.forEach(function (c) { setCell(c, '－'); }); updateTag(); };
-      var bClr = el('button', '', 'クリア'); bClr.onclick = function () { cells.forEach(function (c) { setCell(c, ''); }); updateTag(); };
+      var bNone = el('button', '', '今週なし（全部 −）'); bNone.onclick = function () { cells.forEach(function (c) { setCell(c, '－'); }); syncLive(); };
+      var bClr = el('button', '', 'クリア'); bClr.onclick = function () { cells.forEach(function (c) { setCell(c, ''); }); syncLive(); };
       bulk.appendChild(bNone); bulk.appendChild(bClr); box.appendChild(bulk);
 
       var save = el('button', 'save', 'この工種の予定を保存');
       save.onclick = function () {
         var yotei = cells.map(function (c) { return c.dataset.val || ''; });
         k.yotei = yotei;
+        if (recalcGenba) recalcGenba();
         // 押したボタン自体に即フィードバック（1.5秒で戻る）
         save.textContent = '✓ 保存しました'; save.classList.add('done');
         setTimeout(function () { save.textContent = 'この工種の予定を保存'; save.classList.remove('done'); }, 1500);
