@@ -11,6 +11,9 @@
     .head { max-width: 600px; margin: 0 auto 8px; }
     h1 { font-size: 17px; margin: 4px 0; }
     .sub { color: #666; font-size: 13px; }
+    .weektoggle { display: flex; gap: 6px; margin: 8px 0 2px; }
+    .weektoggle button { flex: 1; padding: 8px; font-size: 14px; border: 1px solid #00b900; border-radius: 8px; background: #fff; color: #00a000; }
+    .weektoggle button.on { background: #00b900; color: #fff; font-weight: bold; }
     .card { background: #fff; border-radius: 12px; padding: 14px; box-shadow: 0 1px 4px rgba(0,0,0,.1); max-width: 600px; margin: 10px auto; }
     .card.pre { background: #f1f1f1; }
     .card.pre .gname { color: #888; }
@@ -52,6 +55,10 @@
   <div class="head">
     <h1>週間工事予定表 ｜ 予定入力</h1>
     <div class="sub" id="who">読み込み中…</div>
+    <div class="weektoggle" id="weektoggle" style="display:none;">
+      <button id="btnThis" class="on">今週</button>
+      <button id="btnNext">来週</button>
+    </div>
     <div class="sub" id="week"></div>
   </div>
   <div id="list"></div>
@@ -64,6 +71,7 @@
 
     var DAYS = ['日', '月', '火', '水', '木', '金', '土'];
     var profile = {}, weekStart = '';
+    var thisWeekStart = '', nextWeekStart = '', targetWeekStart = '';
     var masters = { shumoku: [], ginoukou: [] };
 
     if (typeof woff === 'undefined') {
@@ -105,18 +113,55 @@
         if (c) render(JSON.parse(c), true);
       } catch (e) {}
     }
-    function loadAll() {
-      jsonp('action=init&' + q({ user: profile.displayName }), function (d) {
+    function loadAll(ws) {
+      var params = { user: profile.displayName };
+      if (ws) params.weekStart = ws;
+      jsonp('action=init&' + q(params), function (d) {
         masters = d.masters || { shumoku: [], ginoukou: [] };
-        try { localStorage.setItem('kjt_' + profile.displayName, JSON.stringify(d)); } catch (e) {}
+        // キャッシュは「今週」の内容だけ保存（起動時に今週をすぐ表示するため）
+        if (!d.thisWeekStart || d.weekStart === d.thisWeekStart) {
+          try { localStorage.setItem('kjt_' + profile.displayName, JSON.stringify(d)); } catch (e) {}
+        }
         render(d, false);
       });
+    }
+
+    // 週の切替（今週／来週）
+    function switchWeek(ws) {
+      if (!ws || ws === targetWeekStart) return;
+      targetWeekStart = ws;
+      updateWeekToggle();
+      document.getElementById('list').innerHTML = '';
+      setStatus('読み込み中…');
+      loadAll(ws);
+    }
+    function updateWeekToggle() {
+      var tg = document.getElementById('weektoggle');
+      if (!thisWeekStart) { tg.style.display = 'none'; return; }
+      tg.style.display = 'flex';
+      document.getElementById('btnThis').className = (targetWeekStart === thisWeekStart) ? 'on' : '';
+      document.getElementById('btnNext').className = (targetWeekStart === nextWeekStart) ? 'on' : '';
+    }
+    document.getElementById('btnThis').onclick = function () { switchWeek(thisWeekStart); };
+    document.getElementById('btnNext').onclick = function () { switchWeek(nextWeekStart); };
+
+    // weekStart（日曜）から「6/28〜7/4」のような週の範囲文字列を作る
+    function weekRangeLabel(ws) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(ws)) return ws;
+      var p = ws.split('-'); var s = new Date(+p[0], +p[1] - 1, +p[2]);
+      var e = new Date(s.getFullYear(), s.getMonth(), s.getDate() + 6);
+      return (s.getMonth() + 1) + '/' + s.getDate() + '〜' + (e.getMonth() + 1) + '/' + e.getDate();
     }
 
     function render(data, fromCache) {
       if (data.masters) masters = data.masters;
       weekStart = data.weekStart;
-      document.getElementById('week').textContent = '対象週（日曜始まり）：' + weekStart + (fromCache ? '（前回の表示・更新中…）' : '');
+      if (data.thisWeekStart) thisWeekStart = data.thisWeekStart;
+      if (data.nextWeekStart) nextWeekStart = data.nextWeekStart;
+      targetWeekStart = weekStart;
+      updateWeekToggle();
+      var which = (weekStart === nextWeekStart) ? '来週' : '今週';
+      document.getElementById('week').textContent = which + '（' + weekRangeLabel(weekStart) + '）' + (fromCache ? '（前回の表示・更新中…）' : '');
       var list = document.getElementById('list'); list.innerHTML = '';
       if (!data.genba || !data.genba.length) { if (!fromCache) setStatus('担当の現場が見つかりませんでした。'); return; }
       if (!fromCache) setStatus('');
