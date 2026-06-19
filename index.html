@@ -178,9 +178,11 @@
       var left = el('div'); left.style.display = 'flex'; left.style.alignItems = 'center';
       var label = el('div', 'klabel', k.shumoku + '：' + (k.ginoukou || '（技能工未設定）'));
       var tag = el('span', 'tag');
-      left.appendChild(label); left.appendChild(tag);
+      var done = el('button', '', '完了');
+      done.style.cssText = 'margin-left:8px; padding:2px 10px; font-size:11px; border:1px solid #2a7; border-radius:10px; background:#fff; color:#2a7; white-space:nowrap; flex-shrink:0;';
+      left.style.flexWrap = 'wrap'; left.style.rowGap = '4px';
+      left.appendChild(label); left.appendChild(tag); left.appendChild(done);
       var right = el('div'); right.style.whiteSpace = 'nowrap'; right.style.flexShrink = '0';
-      var done = el('button', 'editlink', '完了'); done.style.color = '#2a7';
       var edit = el('button', 'editlink', '編集');
       var editHolder = el('div'); editHolder.style.display = 'none';
       edit.onclick = function () {
@@ -196,23 +198,22 @@
       };
       done.onclick = function () {
         if (!window.confirm('「' + k.shumoku + '：' + (k.ginoukou || '技能工未設定') + '」を完了にします。\n画面から消えますがよろしいですか？')) return;
-        done.disabled = true;
-        jsonp('action=completeKousyu&' + q({ user: profile.displayName, kousyuId: k.kousyuId }), function (res) {
-          toast('✓ 工種を完了にしました');
-          box.remove();
-          var i = g.kousyu.indexOf(k); if (i >= 0) g.kousyu.splice(i, 1);
-          if (recalcGenba) recalcGenba();
-          if (res && res.remaining === 0) {
-            if (window.confirm('この工事を完工にしますか？\n（' + g.name + '）\n完工にすると一覧から消えます。')) {
-              jsonp('action=completeGenba&' + q({ user: profile.displayName, genbaId: g.genbaId }), function () {
-                toast('✓ 工事を完工にしました');
-                if (removeCard) removeCard();
-              });
-            }
+        // 先に画面から消す（サーバーは待たない＝速い）
+        box.remove();
+        var i = g.kousyu.indexOf(k); if (i >= 0) g.kousyu.splice(i, 1);
+        if (recalcGenba) recalcGenba();
+        toast('✓ 工種を完了にしました');
+        jsonp('action=completeKousyu&' + q({ user: profile.displayName, kousyuId: k.kousyuId }));  // 裏で保存
+        // これが最後の工種なら、工事の完工を確認（残数は画面側で判定）
+        if (g.kousyu.length === 0) {
+          if (window.confirm('この工事を完工にしますか？\n（' + g.name + '）\n完工にすると一覧から消えます。')) {
+            if (removeCard) removeCard();
+            toast('✓ 工事を完工にしました');
+            jsonp('action=completeGenba&' + q({ user: profile.displayName, genbaId: g.genbaId }));  // 裏で保存
           }
-        });
+        }
       };
-      right.appendChild(done); right.appendChild(edit);
+      right.appendChild(edit);
       row.appendChild(left); row.appendChild(right);
       box.appendChild(row); box.appendChild(editHolder);
 
