@@ -3,95 +3,165 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>週間工事予定表（技術検証）</title>
+  <title>週間工事予定表（入力）</title>
   <style>
-    body { font-family: sans-serif; margin: 0; padding: 16px; background: #f5f6f8; color: #222; }
-    .card { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.1); max-width: 480px; margin: 0 auto; }
-    h1 { font-size: 18px; margin: 0 0 12px; }
-    .row { margin: 8px 0; font-size: 15px; }
-    .label { color: #666; font-size: 13px; }
-    .value { font-weight: bold; }
-    button { width: 100%; padding: 14px; font-size: 16px; border: none; border-radius: 8px; background: #00b900; color: #fff; margin-top: 16px; }
-    button:disabled { background: #bbb; }
-    #result { margin-top: 14px; padding: 12px; border-radius: 8px; background: #eef; font-size: 13px; word-break: break-all; white-space: pre-wrap; }
+    body { font-family: sans-serif; margin: 0; padding: 12px; background: #f5f6f8; color: #222; }
+    .head { max-width: 560px; margin: 0 auto 8px; }
+    h1 { font-size: 17px; margin: 4px 0; }
+    .sub { color: #666; font-size: 13px; }
+    .card { background: #fff; border-radius: 12px; padding: 14px; box-shadow: 0 1px 4px rgba(0,0,0,.1); max-width: 560px; margin: 10px auto; }
+    .gname { font-size: 16px; font-weight: bold; }
+    .gmoto { color: #666; font-size: 13px; margin-bottom: 8px; }
+    .days { display: flex; gap: 4px; margin: 8px 0; }
+    .day { flex: 1; text-align: center; }
+    .dlabel { font-size: 12px; color: #888; }
+    .dlabel.sun { color: #d33; }
+    .dlabel.sat { color: #36c; }
+    .cell { width: 100%; height: 40px; border: 1px solid #ccc; border-radius: 8px; background: #fff; font-size: 18px; padding: 0; }
+    .cell.maru { color: #0a0; border-color: #0a0; }
+    .cell.bar  { color: #999; }
+    .save { width: 100%; padding: 12px; font-size: 15px; border: none; border-radius: 8px; background: #00b900; color: #fff; margin-top: 8px; }
+    .save:disabled { background: #bbb; }
+    #status { max-width: 560px; margin: 8px auto; padding: 10px; border-radius: 8px; background: #eef; font-size: 13px; white-space: pre-wrap; }
   </style>
 </head>
 <body>
-  <div class="card">
-    <h1>週間工事予定表 ｜ 技術検証</h1>
-
-    <div class="row"><span class="label">氏名</span><br><span class="value" id="name">読み込み中…</span></div>
-    <div class="row"><span class="label">ユーザーID</span><br><span class="value" id="uid">読み込み中…</span></div>
-
-    <button id="sendBtn" disabled onclick="send()">この内容を保存する</button>
-
-    <div id="result"></div>
+  <div class="head">
+    <h1>週間工事予定表 ｜ 予定入力</h1>
+    <div class="sub" id="who">読み込み中…</div>
+    <div class="sub" id="week"></div>
   </div>
 
-  <!-- LINE WORKS ミニアプリ（WOFF）のSDK -->
+  <div id="list"></div>
+  <div id="status"></div>
+
   <script charset="utf-8" src="https://static.worksmobile.net/static/wm/woff/edge/3.7.1/sdk.js"></script>
   <script>
-    // ★ここを2か所、自分の値に書き換える★
     var WOFF_ID = 'GQuT6taPudJXwARr1sNZVA';
     var GAS_URL = 'https://script.google.com/macros/s/AKfycbwoL4KIN_xc1aZho3M3IcaTF0PMIioZyW4quil_Kw_fjdHNeh31zuDxperkwuk6dm9R/exec';
 
+    var DAYS = ['日', '月', '火', '水', '木', '金', '土'];
     var profile = {};
+    var weekStart = '';
 
-    // ── 診断つき初期化 ───────────────────────────────
+    // ── 起動：WOFFで本人確認 → データ読み出し ──
     if (typeof woff === 'undefined') {
-      show('【診断】WOFF SDKが読み込めていません（SDKのscriptが届いていない）。');
+      setStatus('WOFF SDKが読み込めていません。');
     } else {
-      show('【診断】SDK読み込みOK → 初期化中…');
-      var finished = false;
-      setTimeout(function () {
-        if (!finished) show('【診断】初期化が10秒以上返ってきません。');
-      }, 10000);
-
       woff.init({ woffId: WOFF_ID })
-        .then(function () {
-          finished = true;
-          show('【診断】初期化OK → プロフィール取得中…');
-          return woff.getProfile();
-        })
+        .then(function () { return woff.getProfile(); })
         .then(function (p) {
           profile = p;
-          document.getElementById('name').textContent = p.displayName || '(取得できず)';
-          document.getElementById('uid').textContent  = p.userId || '(取得できず)';
-          document.getElementById('sendBtn').disabled = false;
-          show('【診断】プロフィール取得OK。保存できます。');
+          document.getElementById('who').textContent = p.displayName + ' さんの担当現場';
+          loadMyGenba(p.displayName);
         })
-        .catch(function (err) {
-          finished = true;
-          show('【診断】エラー: ' + (err && err.message ? err.message : err));
-        });
+        .catch(function (err) { setStatus('認証エラー: ' + err); });
     }
 
-    // ── 保存（別ドメインのGASへ送るため no-cors で送信）──
-    function send() {
-      document.getElementById('sendBtn').disabled = true;
-      show('送信中…');
-      fetch(GAS_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          userId: profile.userId,
-          name:   profile.displayName,
-          memo:   '技術検証の送信'
-        })
-      })
-      .then(function () {
-        show('送信しました。スプレッドシートの「テストログ」シートに行が増えているか確認してください。');
-      })
-      .catch(function (err) {
-        show('送信エラー: ' + err);
-        document.getElementById('sendBtn').disabled = false;
+    // ── 担当現場の読み出し（JSONP）──
+    function loadMyGenba(user) {
+      setStatus('読み込み中…');
+      var cb = 'onGenba_' + Date.now();
+      window[cb] = function (resp) {
+        delete window[cb];
+        if (!resp.ok) { setStatus('読み込みエラー: ' + resp.error); return; }
+        render(resp.data);
+      };
+      var s = document.createElement('script');
+      s.src = GAS_URL + '?action=myGenba&user=' + encodeURIComponent(user) + '&callback=' + cb + '&t=' + Date.now();
+      s.onerror = function () { setStatus('通信エラー（GASのURLを確認してください）'); };
+      document.body.appendChild(s);
+    }
+
+    // ── 画面を描く ──
+    function render(data) {
+      weekStart = data.weekStart;
+      document.getElementById('week').textContent = '対象週（日曜始まり）：' + weekStart;
+      var list = document.getElementById('list');
+      list.innerHTML = '';
+      if (!data.genba.length) {
+        setStatus('担当の現場が見つかりませんでした。');
+        return;
+      }
+      setStatus('');
+      data.genba.forEach(function (g) {
+        list.appendChild(makeCard(g));
       });
     }
 
-    function show(msg) {
-      document.getElementById('result').textContent = msg;
+    function makeCard(g) {
+      var card = document.createElement('div');
+      card.className = 'card';
+
+      var name = document.createElement('div');
+      name.className = 'gname'; name.textContent = g.name;
+      var moto = document.createElement('div');
+      moto.className = 'gmoto'; moto.textContent = '元請：' + (g.moto || '-') + '　状態：' + (g.status || '-');
+      card.appendChild(name); card.appendChild(moto);
+
+      var days = document.createElement('div');
+      days.className = 'days';
+      var cells = [];
+      for (var i = 0; i < 7; i++) {
+        var col = document.createElement('div'); col.className = 'day';
+        var lab = document.createElement('div');
+        lab.className = 'dlabel' + (i === 0 ? ' sun' : (i === 6 ? ' sat' : ''));
+        lab.textContent = DAYS[i];
+        var btn = document.createElement('button');
+        btn.className = 'cell';
+        setCell(btn, g.yotei[i] || '');
+        btn.onclick = (function (b) { return function () { cycle(b); }; })(btn);
+        col.appendChild(lab); col.appendChild(btn);
+        days.appendChild(col);
+        cells.push(btn);
+      }
+      card.appendChild(days);
+
+      var save = document.createElement('button');
+      save.className = 'save'; save.textContent = 'この現場の予定を保存';
+      save.onclick = function () { saveCard(g, cells, save); };
+      card.appendChild(save);
+      return card;
     }
+
+    // 空欄 → 〇 → － → 空欄
+    function cycle(btn) {
+      var v = btn.dataset.val || '';
+      var next = v === '' ? '〇' : (v === '〇' ? '－' : '');
+      setCell(btn, next);
+    }
+    function setCell(btn, v) {
+      btn.dataset.val = v;
+      btn.textContent = v === '' ? '・' : v;
+      btn.className = 'cell' + (v === '〇' ? ' maru' : (v === '－' ? ' bar' : ''));
+    }
+
+    // ── 保存（no-cors POST）──
+    function saveCard(g, cells, saveBtn) {
+      saveBtn.disabled = true;
+      var yotei = cells.map(function (c) { return c.dataset.val || ''; });
+      fetch(GAS_URL, {
+        method: 'POST', mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          type: 'saveYotei',
+          user: profile.displayName,
+          genbaId: g.genbaId,
+          weekStart: weekStart,
+          yotei: yotei
+        })
+      })
+      .then(function () {
+        setStatus('「' + g.name + '」の予定を保存しました。');
+        saveBtn.disabled = false;
+      })
+      .catch(function (err) {
+        setStatus('保存エラー: ' + err);
+        saveBtn.disabled = false;
+      });
+    }
+
+    function setStatus(msg) { document.getElementById('status').textContent = msg; }
   </script>
 </body>
 </html>
