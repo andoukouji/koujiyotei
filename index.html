@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>週間工事予定表（技術検証）</title>
+  <style>
+    body { font-family: sans-serif; margin: 0; padding: 16px; background: #f5f6f8; color: #222; }
+    .card { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.1); max-width: 480px; margin: 0 auto; }
+    h1 { font-size: 18px; margin: 0 0 12px; }
+    .row { margin: 8px 0; font-size: 15px; }
+    .label { color: #666; font-size: 13px; }
+    .value { font-weight: bold; }
+    button { width: 100%; padding: 14px; font-size: 16px; border: none; border-radius: 8px; background: #00b900; color: #fff; margin-top: 16px; }
+    button:disabled { background: #bbb; }
+    #result { margin-top: 14px; padding: 12px; border-radius: 8px; background: #eef; font-size: 13px; word-break: break-all; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>週間工事予定表 ｜ 技術検証</h1>
+
+    <div class="row"><span class="label">氏名</span><br><span class="value" id="name">読み込み中…</span></div>
+    <div class="row"><span class="label">ユーザーID</span><br><span class="value" id="uid">読み込み中…</span></div>
+
+    <button id="sendBtn" disabled onclick="send()">この内容を保存する</button>
+
+    <div id="result"></div>
+  </div>
+
+  <!-- LINE WORKS ミニアプリ（WOFF）のSDK -->
+  <script charset="utf-8" src="https://static.worksmobile.net/static/wm/woff/edge/3.7.1/sdk.js"></script>
+  <script>
+    // ★ここを2か所、自分の値に書き換える★
+    var WOFF_ID = 'GQuT6taPudJXwARr1sNZVA';
+    var GAS_URL = 'ここにGASウェブアプリのURLを貼る';
+
+    var profile = {};
+
+    // ── 診断つき初期化 ───────────────────────────────
+    if (typeof woff === 'undefined') {
+      show('【診断】WOFF SDKが読み込めていません（SDKのscriptが届いていない）。');
+    } else {
+      show('【診断】SDK読み込みOK → 初期化中…');
+      var finished = false;
+      setTimeout(function () {
+        if (!finished) show('【診断】初期化が10秒以上返ってきません。');
+      }, 10000);
+
+      woff.init({ woffId: WOFF_ID })
+        .then(function () {
+          finished = true;
+          show('【診断】初期化OK → プロフィール取得中…');
+          return woff.getProfile();
+        })
+        .then(function (p) {
+          profile = p;
+          document.getElementById('name').textContent = p.displayName || '(取得できず)';
+          document.getElementById('uid').textContent  = p.userId || '(取得できず)';
+          document.getElementById('sendBtn').disabled = false;
+          show('【診断】プロフィール取得OK。保存できます。');
+        })
+        .catch(function (err) {
+          finished = true;
+          show('【診断】エラー: ' + (err && err.message ? err.message : err));
+        });
+    }
+
+    // ── 保存（別ドメインのGASへ送るため no-cors で送信）──
+    function send() {
+      document.getElementById('sendBtn').disabled = true;
+      show('送信中…');
+      fetch(GAS_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          userId: profile.userId,
+          name:   profile.displayName,
+          memo:   '技術検証の送信'
+        })
+      })
+      .then(function () {
+        show('送信しました。スプレッドシートの「テストログ」シートに行が増えているか確認してください。');
+      })
+      .catch(function (err) {
+        show('送信エラー: ' + err);
+        document.getElementById('sendBtn').disabled = false;
+      });
+    }
+
+    function show(msg) {
+      document.getElementById('result').textContent = msg;
+    }
+  </script>
+</body>
+</html>
