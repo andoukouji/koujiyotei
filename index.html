@@ -27,7 +27,6 @@
     .bulk { display: flex; gap: 6px; margin: 4px 0; }
     .bulk button { flex: 1; padding: 6px; font-size: 12px; border: 1px solid #ccc; border-radius: 8px; background: #f7f7f7; color: #333; }
     .save { width: 100%; padding: 10px; font-size: 14px; border: none; border-radius: 8px; background: #00b900; color: #fff; margin-top: 6px; }
-    .save:disabled { background: #bbb; }
     .form { background: #fafafe; border: 1px solid #e0e0ee; border-radius: 8px; padding: 10px; margin-top: 8px; }
     .addtoggle { width: 100%; padding: 8px; font-size: 13px; border: 1px solid #00b900; border-radius: 8px; background: #fff; color: #00a000; margin-top: 10px; }
     .row { display: flex; gap: 6px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
@@ -67,34 +66,51 @@
         .then(function (p) {
           profile = p;
           document.getElementById('who').textContent = p.displayName + ' さんの担当現場';
-          loadAll();   // 1回の通信で現場・予定・マスタをまとめて取得
+          showCache();   // 前回の内容をすぐ表示（速く見せる）
+          loadAll();     // 裏で最新を取得して差し替え
         })
         .catch(function (e) { setStatus('認証エラー: ' + e); });
     }
 
-    function jsonp(params, onOk) {
+    // ── 通信（読み出し・書き込みともJSONP GETで1往復）──
+    function jsonp(query, onOk) {
       var cb = 'cb_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
-      window[cb] = function (resp) { delete window[cb]; if (!resp.ok) { setStatus('エラー: ' + resp.error); return; } onOk(resp.data); };
+      window[cb] = function (resp) {
+        delete window[cb];
+        if (!resp.ok) { setStatus('エラー: ' + (resp.error || '不明')); return; }
+        if (onOk) onOk(resp.data || resp);
+      };
       var s = document.createElement('script');
-      s.src = GAS_URL + '?' + params + '&callback=' + cb + '&t=' + Date.now();
+      s.src = GAS_URL + '?' + query + '&callback=' + cb + '&t=' + Date.now();
       s.onerror = function () { setStatus('通信エラー（GASのURLを確認してください）'); };
+      s.onload = function () { s.remove(); };
       document.body.appendChild(s);
     }
+    function q(params) {
+      return Object.keys(params).map(function (k) { return k + '=' + encodeURIComponent(params[k]); }).join('&');
+    }
 
+    function showCache() {
+      try {
+        var c = localStorage.getItem('kjt_' + profile.displayName);
+        if (c) render(JSON.parse(c), true);
+      } catch (e) {}
+    }
     function loadAll() {
-      setStatus('読み込み中…');
-      jsonp('action=init&user=' + encodeURIComponent(profile.displayName), function (d) {
+      jsonp('action=init&' + q({ user: profile.displayName }), function (d) {
         masters = d.masters || { shumoku: [], ginoukou: [] };
-        render(d);
+        try { localStorage.setItem('kjt_' + profile.displayName, JSON.stringify(d)); } catch (e) {}
+        render(d, false);
       });
     }
 
-    function render(data) {
+    function render(data, fromCache) {
+      if (data.masters) masters = data.masters;
       weekStart = data.weekStart;
-      document.getElementById('week').textContent = '対象週（日曜始まり）：' + weekStart;
+      document.getElementById('week').textContent = '対象週（日曜始まり）：' + weekStart + (fromCache ? '（前回の表示・更新中…）' : '');
       var list = document.getElementById('list'); list.innerHTML = '';
-      if (!data.genba.length) { setStatus('担当の現場が見つかりませんでした。'); return; }
-      setStatus('');
+      if (!data.genba || !data.genba.length) { if (!fromCache) setStatus('担当の現場が見つかりませんでした。'); return; }
+      if (!fromCache) setStatus('');
       data.genba.forEach(function (g) { list.appendChild(makeCard(g)); });
     }
 
@@ -102,16 +118,25 @@
       var card = el('div', 'card');
       card.appendChild(el('div', 'gname', g.name));
       card.appendChild(el('div', 'gmoto', '元請：' + (g.moto || '-')));
-      if (!g.kousyu.length) card.appendChild(el('div', 'sub', '※ まだ工種がありません。下の「＋ 工種を追加」から登録してください。'));
-      g.kousyu.forEach(function (k) { card.appendChild(makeKousyu(g, k)); });
 
-      // 工種を追加
+      var holder = el('div');
+      var emptyNote = el('div', 'sub', '※ まだ工種がありません。下の「＋ 工種を追加」から登録してください。');
+      if (!g.kousyu.length) holder.appendChild(emptyNote);
+      g.kousyu.forEach(function (k) { holder.appendChild(makeKousyu(g, k)); });
+      card.appendChild(holder);
+
       var toggle = el('button', 'addtoggle', '＋ 工種を追加');
       var formHolder = el('div'); formHolder.style.display = 'none';
       toggle.onclick = function () {
         if (formHolder.style.display === 'none') {
           formHolder.innerHTML = '';
-          formHolder.appendChild(buildKousyuForm(g, null));
+          formHolder.appendChild(buildForm(g, null, {
+            onAdded: function (newK) {
+              if (emptyNote.parentNode) emptyNote.remove();
+              holder.appendChild(makeKousyu(g, newK));
+              formHolder.style.display = 'none';
+            }
+          }));
           formHolder.style.display = 'block';
         } else { formHolder.style.display = 'none'; }
       };
@@ -122,18 +147,22 @@
     function makeKousyu(g, k) {
       var box = el('div', 'kousyu');
       var row = el('div', 'krow');
-      row.appendChild(el('div', 'klabel', k.shumoku + '：' + (k.ginoukou || '（技能工未設定）')));
+      var label = el('div', 'klabel', k.shumoku + '：' + (k.ginoukou || '（技能工未設定）'));
       var edit = el('button', 'editlink', '編集');
       var editHolder = el('div'); editHolder.style.display = 'none';
       edit.onclick = function () {
         if (editHolder.style.display === 'none') {
           editHolder.innerHTML = '';
-          editHolder.appendChild(buildKousyuForm(g, k));
+          editHolder.appendChild(buildForm(g, k, {
+            labelEl: label,
+            onUpdated: function () { editHolder.style.display = 'none'; },
+            onDeleted: function () { box.remove(); }
+          }));
           editHolder.style.display = 'block';
         } else { editHolder.style.display = 'none'; }
       };
-      row.appendChild(edit); box.appendChild(row);
-      box.appendChild(editHolder);
+      row.appendChild(label); row.appendChild(edit);
+      box.appendChild(row); box.appendChild(editHolder);
 
       var days = el('div', 'days'); var cells = [];
       for (var i = 0; i < 7; i++) {
@@ -152,33 +181,30 @@
 
       var save = el('button', 'save', 'この工種の予定を保存');
       save.onclick = function () {
-        save.disabled = true;
         var yotei = cells.map(function (c) { return c.dataset.val || ''; });
-        post({ type: 'saveYotei', user: profile.displayName, genbaId: g.genbaId, kousyuId: k.kousyuId, weekStart: weekStart, yotei: yotei },
-          function () { setStatus('「' + g.name + '／' + k.shumoku + '」の予定を保存しました。'); save.disabled = false; });
+        k.yotei = yotei;
+        setStatus('「' + g.name + '／' + k.shumoku + '」を保存しました。');  // 即時表示
+        // 待たずに送信（速く感じるように）
+        jsonp('action=saveYotei&' + q({ user: profile.displayName, genbaId: g.genbaId, kousyuId: k.kousyuId, weekStart: weekStart, yotei: yotei.join(',') }));
       };
       box.appendChild(save);
       return box;
     }
 
-    // 工種の追加／編集フォーム（existing が無ければ追加、あれば編集）
-    function buildKousyuForm(g, existing) {
+    // 追加／編集フォーム
+    function buildForm(g, existing, hooks) {
       var form = el('div', 'form');
       var picked = [];
-      if (existing && existing.ginoukou) {
-        existing.ginoukou.split(/[、,]/).forEach(function (s) { s = s.trim(); if (s) picked.push(s); });
-      }
+      if (existing && existing.ginoukou) existing.ginoukou.split(/[、,]/).forEach(function (s) { s = s.trim(); if (s) picked.push(s); });
 
       var rowS = el('div', 'row'); rowS.appendChild(el('span', '', '種目：'));
-      var selShu = document.createElement('select');
-      selShu.appendChild(opt('', '選択'));
+      var selShu = document.createElement('select'); selShu.appendChild(opt('', '選択'));
       masters.shumoku.forEach(function (s) { selShu.appendChild(opt(s, s)); });
       if (existing) selShu.value = existing.shumoku;
       rowS.appendChild(selShu); form.appendChild(rowS);
 
       var rowG = el('div', 'row'); rowG.appendChild(el('span', '', '技能工：'));
-      var selGi = document.createElement('select');
-      selGi.appendChild(opt('', '選択'));
+      var selGi = document.createElement('select'); selGi.appendChild(opt('', '選択'));
       masters.ginoukou.forEach(function (s) { selGi.appendChild(opt(s, s)); });
       var addGi = el('button', 'smallbtn', '＋追加');
       rowG.appendChild(selGi); rowG.appendChild(addGi); form.appendChild(rowG);
@@ -205,11 +231,20 @@
       var confirm = el('button', 'confirm', existing ? 'この工種を更新' : 'この工種を登録');
       confirm.onclick = function () {
         if (!selShu.value) { setStatus('種目を選んでください。'); return; }
-        confirm.disabled = true;
-        var payload = existing
-          ? { type: 'updateKousyu', user: profile.displayName, kousyuId: existing.kousyuId, shumoku: selShu.value, ginoukou: picked }
-          : { type: 'addKousyu', user: profile.displayName, genbaId: g.genbaId, shumoku: selShu.value, ginoukou: picked };
-        post(payload, function () { setStatus('保存しました。'); loadAll(); });
+        confirm.disabled = true; setStatus('処理中…');
+        var gino = picked.join('|');
+        if (existing) {
+          jsonp('action=updateKousyu&' + q({ user: profile.displayName, kousyuId: existing.kousyuId, shumoku: selShu.value, ginoukou: gino }), function () {
+            existing.shumoku = selShu.value; existing.ginoukou = picked.join('、');
+            if (hooks.labelEl) hooks.labelEl.textContent = existing.shumoku + '：' + (existing.ginoukou || '（技能工未設定）');
+            setStatus('工種を更新しました。'); hooks.onUpdated();
+          });
+        } else {
+          jsonp('action=addKousyu&' + q({ user: profile.displayName, genbaId: g.genbaId, shumoku: selShu.value, ginoukou: gino }), function (res) {
+            var newK = { kousyuId: res.kousyuId, shumoku: res.shumoku, ginoukou: res.ginoukou, yotei: ['', '', '', '', '', '', ''] };
+            setStatus('工種を追加しました。'); hooks.onAdded(newK);
+          });
+        }
       };
       form.appendChild(confirm);
 
@@ -217,19 +252,14 @@
         var del = el('button', 'delbtn', 'この工種を削除');
         del.onclick = function () {
           if (!window.confirm('「' + existing.shumoku + '」を削除します。よろしいですか？')) return;
-          del.disabled = true;
-          post({ type: 'deleteKousyu', user: profile.displayName, kousyuId: existing.kousyuId },
-            function () { setStatus('工種を削除しました。'); loadAll(); });
+          del.disabled = true; setStatus('削除中…');
+          jsonp('action=deleteKousyu&' + q({ user: profile.displayName, kousyuId: existing.kousyuId }), function () {
+            setStatus('工種を削除しました。'); hooks.onDeleted();
+          });
         };
         form.appendChild(del);
       }
       return form;
-    }
-
-    function post(payload, onDone) {
-      fetch(GAS_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) })
-        .then(function () { onDone(); })
-        .catch(function (e) { setStatus('保存エラー: ' + e); });
     }
 
     function cycle(btn) { var v = btn.dataset.val || ''; setCell(btn, v === '' ? '〇' : (v === '〇' ? '－' : '')); }
