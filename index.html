@@ -14,13 +14,23 @@
     .weektoggle { display: flex; gap: 6px; margin: 8px 0 2px; }
     .weektoggle button { flex: 1; padding: 8px; font-size: 14px; border: 1px solid #00b900; border-radius: 8px; background: #fff; color: #00a000; }
     .weektoggle button.on { background: #00b900; color: #fff; font-weight: bold; }
-    .modetoggle { display: flex; gap: 6px; margin: 6px 0 2px; }
-    .modetoggle button { flex: 1; padding: 8px; font-size: 14px; border: 1px solid #bbb; border-radius: 8px; background: #fff; color: #555; }
-    .modetoggle button.onY { background: #00b900; color: #fff; font-weight: bold; border-color: #00b900; }
-    .modetoggle button.onJ { background: #e69500; color: #fff; font-weight: bold; border-color: #e69500; }
-    .modehint { font-size: 12px; color: #777; margin: 2px 0 0; }
-    .days.jmode .cell { border-color: #e69500; }
-    .days.jmode .cell.maru { color: #e69500; border-color: #e69500; }
+    /* 折り畳み */
+    .ghead { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+    .caret { color: #999; font-size: 12px; width: 14px; flex-shrink: 0; }
+    .gbody { margin-top: 6px; }
+    .khead { display: flex; align-items: center; gap: 6px; cursor: pointer; border-top: 1px solid #eee; padding-top: 10px; margin-top: 10px; flex-wrap: wrap; row-gap: 4px; }
+    .kactions { margin-left: auto; white-space: nowrap; flex-shrink: 0; }
+    .kdone { padding: 3px 10px; font-size: 11px; border: 1px solid #2a7; border-radius: 6px; background: #fff; color: #2a7; white-space: nowrap; cursor: pointer; }
+    .kbody { margin-top: 6px; }
+    /* 予実2段グリッド */
+    .hdrow, .daysrow { display: flex; gap: 3px; align-items: center; }
+    .daysrow { margin: 3px 0; }
+    .hdrow .rl, .daysrow .rl { width: 26px; flex-shrink: 0; text-align: center; font-size: 11px; font-weight: bold; }
+    .hdrow .hd { flex: 1; text-align: center; font-size: 11px; color: #888; }
+    .hdrow .hd.sun { color: #d33; } .hdrow .hd.sat { color: #36c; }
+    .rl.y { color: #1144cc; } .rl.j { color: #e69500; }
+    .daysrow .cell { flex: 1; height: 34px; }
+    .jrow .cell.maru { color: #e69500; border-color: #e69500; }
     .card { background: #fff; border-radius: 12px; padding: 14px; box-shadow: 0 1px 4px rgba(0,0,0,.1); max-width: 600px; margin: 10px auto; }
     .card.pre { background: #f1f1f1; }
     .card.pre .gname { color: #888; }
@@ -70,11 +80,6 @@
       <button id="btnThis" class="on">今週</button>
       <button id="btnNext">来週</button>
     </div>
-    <div class="modetoggle" id="modetoggle" style="display:none;">
-      <button id="btnYotei" class="onY">予定</button>
-      <button id="btnJisseki">実績（当日の稼働）</button>
-    </div>
-    <div class="modehint" id="modehint"></div>
     <div class="sub" id="week"></div>
   </div>
   <div id="list"></div>
@@ -89,8 +94,7 @@
     var profile = {}, weekStart = '';
     var thisWeekStart = '', nextWeekStart = '', targetWeekStart = '';
     var masters = { shumoku: [], ginoukou: [] };
-    var inputMode = 'yotei';   // 'yotei'=予定 / 'jisseki'=実績
-    var currentData = null;    // 直近に描画したデータ（モード切替で再描画する用）
+    var currentData = null;    // 直近に描画したデータ
     function blank7() { return ['', '', '', '', '', '', '']; }
 
     if (typeof woff === 'undefined') {
@@ -164,25 +168,6 @@
     document.getElementById('btnThis').onclick = function () { switchWeek(thisWeekStart); };
     document.getElementById('btnNext').onclick = function () { switchWeek(nextWeekStart); };
 
-    // 予定／実績モードの切替
-    function switchMode(m) {
-      if (m === inputMode) return;
-      inputMode = m;
-      updateModeToggle();
-      if (currentData) render(currentData, false);   // 同じデータをその時のモードで描き直す
-    }
-    function updateModeToggle() {
-      var mt = document.getElementById('modetoggle');
-      mt.style.display = 'flex';
-      document.getElementById('btnYotei').className = (inputMode === 'yotei') ? 'onY' : '';
-      document.getElementById('btnJisseki').className = (inputMode === 'jisseki') ? 'onJ' : '';
-      document.getElementById('modehint').textContent = (inputMode === 'jisseki')
-        ? '実績モード：当日に実際に稼働した日を入れます（オレンジ）'
-        : '予定モード：この先の予定を入れます（緑）';
-    }
-    document.getElementById('btnYotei').onclick = function () { switchMode('yotei'); };
-    document.getElementById('btnJisseki').onclick = function () { switchMode('jisseki'); };
-
     // weekStart（日曜）から「6/28〜7/4」のような週の範囲文字列を作る
     function weekRangeLabel(ws) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(ws)) return ws;
@@ -194,7 +179,6 @@
     function render(data, fromCache) {
       if (data.masters) masters = data.masters;
       currentData = data;
-      updateModeToggle();
       weekStart = data.weekStart;
       if (data.thisWeekStart) thisWeekStart = data.thisWeekStart;
       if (data.nextWeekStart) nextWeekStart = data.nextWeekStart;
@@ -232,15 +216,25 @@
 
     function makeCard(g) {
       var card = el('div', 'card');
-      var nameRow = el('div', 'gnamerow');
-      nameRow.appendChild(el('div', 'gname', g.name));
-      var gtag = el('span', 'tag');
-      nameRow.appendChild(gtag);
-      card.appendChild(nameRow);
-      card.appendChild(el('div', 'gmoto', '元請：' + (g.moto || '-')));
 
-      // 工事ごとのチェック（指示・安全書類・注文書提出）
-      card.appendChild(makeChecks(g));
+      // 見出し（タップで開閉）
+      var header = el('div', 'ghead');
+      var caret = el('span', 'caret', '▶');
+      var gname = el('div', 'gname', g.name);
+      var gtag = el('span', 'tag');
+      header.appendChild(caret); header.appendChild(gname); header.appendChild(gtag);
+      card.appendChild(header);
+
+      var body = el('div', 'gbody'); body.style.display = 'none';   // 最初は閉じる
+      card.appendChild(body);
+      header.onclick = function () {
+        var open = body.style.display !== 'none';
+        body.style.display = open ? 'none' : 'block';
+        caret.textContent = open ? '▶' : '▼';
+      };
+
+      body.appendChild(el('div', 'gmoto', '元請：' + (g.moto || '-')));
+      body.appendChild(makeChecks(g));   // 工事ごとのチェック
 
       // 現場の稼働前／稼働中を計算して、タグとカードの色を更新
       function recalcGenba() {
@@ -249,7 +243,8 @@
         });
         gtag.textContent = has ? '稼働中' : '稼働前';
         gtag.className = 'tag ' + (has ? 'live' : 'pre');
-        card.className = 'card ' + (has ? 'live' : 'pre');
+        card.classList.toggle('live', has);
+        card.classList.toggle('pre', !has);
       }
 
       function removeCard() { if (card.parentNode) card.remove(); }
@@ -258,7 +253,7 @@
       var emptyNote = el('div', 'sub', '※ まだ工種がありません。下の「＋ 工種を追加」から登録してください。');
       if (!g.kousyu.length) holder.appendChild(emptyNote);
       g.kousyu.forEach(function (k) { holder.appendChild(makeKousyu(g, k, recalcGenba, removeCard)); });
-      card.appendChild(holder);
+      body.appendChild(holder);
 
       var toggle = el('button', 'addtoggle', '＋ 工種を追加');
       var formHolder = el('div'); formHolder.style.display = 'none';
@@ -277,25 +272,42 @@
           formHolder.style.display = 'block';
         } else { formHolder.style.display = 'none'; }
       };
-      card.appendChild(toggle); card.appendChild(formHolder);
+      body.appendChild(toggle); body.appendChild(formHolder);
       recalcGenba();
       return card;
     }
 
     function makeKousyu(g, k, recalcGenba, removeCard) {
+      if (!k.yotei) k.yotei = blank7();
+      if (!k.jisseki) k.jisseki = blank7();
+
       var box = el('div', 'kousyu');
-      var row = el('div', 'krow');
-      var left = el('div'); left.style.display = 'flex'; left.style.alignItems = 'center';
+
+      // 見出し（タップで開閉）＋ 完了・編集
+      var head = el('div', 'khead');
+      var caret = el('span', 'caret', '▼');
       var label = el('div', 'klabel', k.shumoku + '：' + (k.ginoukou || '（技能工未設定）'));
       var tag = el('span', 'tag');
-      var done = el('button', '', '✓ 完了にする');
-      done.style.cssText = 'margin-left:8px; padding:3px 10px; font-size:11px; border:1px solid #2a7; border-radius:6px; background:#fff; color:#2a7; white-space:nowrap; flex-shrink:0; cursor:pointer;';
-      left.style.flexWrap = 'wrap'; left.style.rowGap = '4px';
-      left.appendChild(label); left.appendChild(tag); left.appendChild(done);
-      var right = el('div'); right.style.whiteSpace = 'nowrap'; right.style.flexShrink = '0';
+      var actions = el('div', 'kactions');
+      var done = el('button', 'kdone', '✓ 完了');
       var edit = el('button', 'editlink', '編集');
+      actions.appendChild(done); actions.appendChild(edit);
+      head.appendChild(caret); head.appendChild(label); head.appendChild(tag); head.appendChild(actions);
+      box.appendChild(head);
+
+      var body = el('div', 'kbody');   // 開閉対象
+      box.appendChild(body);
+      function openBody() { body.style.display = 'block'; caret.textContent = '▼'; }
+      head.onclick = function (ev) {
+        if (ev.target === done || ev.target === edit) return;   // ボタンは開閉に使わない
+        var open = body.style.display !== 'none';
+        body.style.display = open ? 'none' : 'block';
+        caret.textContent = open ? '▶' : '▼';
+      };
+
       var editHolder = el('div'); editHolder.style.display = 'none';
       edit.onclick = function () {
+        openBody();
         if (editHolder.style.display === 'none') {
           editHolder.innerHTML = '';
           editHolder.appendChild(buildForm(g, k, {
@@ -306,73 +318,73 @@
           editHolder.style.display = 'block';
         } else { editHolder.style.display = 'none'; }
       };
+      body.appendChild(editHolder);
+
       done.onclick = function () {
         if (!window.confirm('「' + k.shumoku + '：' + (k.ginoukou || '技能工未設定') + '」を完了にします。\n画面から消えますがよろしいですか？')) return;
-        // 先に画面から消す（サーバーは待たない＝速い）
         box.remove();
         var i = g.kousyu.indexOf(k); if (i >= 0) g.kousyu.splice(i, 1);
         if (recalcGenba) recalcGenba();
         toast('✓ 工種を完了にしました');
-        jsonp('action=completeKousyu&' + q({ user: profile.displayName, kousyuId: k.kousyuId }));  // 裏で保存
-        // これが最後の工種なら、工事の完工を確認（残数は画面側で判定）
+        jsonp('action=completeKousyu&' + q({ user: profile.displayName, kousyuId: k.kousyuId }));
         if (g.kousyu.length === 0) {
           if (window.confirm('この工事を完工にしますか？\n（' + g.name + '）\n完工にすると一覧から消えます。')) {
             if (removeCard) removeCard();
             toast('✓ 工事を完工にしました');
-            jsonp('action=completeGenba&' + q({ user: profile.displayName, genbaId: g.genbaId }));  // 裏で保存
+            jsonp('action=completeGenba&' + q({ user: profile.displayName, genbaId: g.genbaId }));
           }
         }
       };
-      right.appendChild(edit);
-      row.appendChild(left); row.appendChild(right);
-      box.appendChild(row); box.appendChild(editHolder);
 
-      // 予定／実績の配列を必ず用意（キャッシュの古いデータ対策）
-      if (!k.yotei) k.yotei = blank7();
-      if (!k.jisseki) k.jisseki = blank7();
-      var arr = (inputMode === 'jisseki') ? k.jisseki : k.yotei;   // いま編集する側
+      // 曜日見出し行
+      var hd = el('div', 'hdrow');
+      hd.appendChild(el('span', 'rl', ''));
+      for (var h = 0; h < 7; h++) hd.appendChild(el('div', 'hd' + (h === 0 ? ' sun' : (h === 6 ? ' sat' : '')), DAYS[h]));
+      body.appendChild(hd);
 
-      var days = el('div', 'days' + (inputMode === 'jisseki' ? ' jmode' : '')); var cells = [];
-      for (var i = 0; i < 7; i++) {
-        var col = el('div', 'day');
-        col.appendChild(el('div', 'dlabel' + (i === 0 ? ' sun' : (i === 6 ? ' sat' : '')), DAYS[i]));
-        var btn = el('button', 'cell'); setCell(btn, arr[i] || '');
-        btn.onclick = (function (b) { return function () { cycle(b); syncLive(); }; })(btn);
-        col.appendChild(btn); days.appendChild(col); cells.push(btn);
+      // 予定行・実績行（上下2段）
+      var yCells = [], jCells = [];
+      function buildDayRow(cls, rowLabel, arr, cells) {
+        var rowEl = el('div', 'daysrow ' + cls);
+        rowEl.appendChild(el('span', 'rl ' + (cls === 'jrow' ? 'j' : 'y'), rowLabel));
+        for (var i = 0; i < 7; i++) {
+          var btn = el('button', 'cell'); setCell(btn, arr[i] || '');
+          btn.onclick = (function (b) { return function () { cycle(b); syncLive(); }; })(btn);
+          rowEl.appendChild(btn); cells.push(btn);
+        }
+        return rowEl;
       }
-      box.appendChild(days);
+      body.appendChild(buildDayRow('yrow', '予', k.yotei, yCells));
+      body.appendChild(buildDayRow('jrow', '実', k.jisseki, jCells));
 
-      // 工種タグ・現場タグは「予定」基準（実績モードで見ても稼働中/前は変わらない）
+      // 稼働中／稼働前は「予定」基準
       function updateTag() {
         var has = (k.yotei || []).some(function (v) { return v === '〇' || v === '－'; });
         tag.textContent = has ? '稼働中' : '稼働前';
         tag.className = 'tag ' + (has ? 'live' : 'pre');
       }
-      // 画面の今の状態を、編集中モードの配列へ書き戻す（保存はしない）
       function syncLive() {
-        var vals = cells.map(function (c) { return c.dataset.val || ''; });
-        if (inputMode === 'jisseki') k.jisseki = vals; else k.yotei = vals;
+        k.yotei = yCells.map(function (c) { return c.dataset.val || ''; });
+        k.jisseki = jCells.map(function (c) { return c.dataset.val || ''; });
         updateTag();
         if (recalcGenba) recalcGenba();
       }
       updateTag();
 
       var bulk = el('div', 'bulk');
-      var noneLabel = (inputMode === 'jisseki') ? '稼働なし（全部 −）' : '今週なし（全部 −）';
-      var bNone = el('button', '', noneLabel); bNone.onclick = function () { cells.forEach(function (c) { setCell(c, '－'); }); syncLive(); };
-      var bClr = el('button', '', 'クリア'); bClr.onclick = function () { cells.forEach(function (c) { setCell(c, ''); }); syncLive(); };
-      bulk.appendChild(bNone); bulk.appendChild(bClr); box.appendChild(bulk);
+      var bNone = el('button', '', '予定 全部−'); bNone.onclick = function () { yCells.forEach(function (c) { setCell(c, '－'); }); syncLive(); };
+      var bClr = el('button', '', 'クリア（予定・実績）'); bClr.onclick = function () { yCells.concat(jCells).forEach(function (c) { setCell(c, ''); }); syncLive(); };
+      bulk.appendChild(bNone); bulk.appendChild(bClr); body.appendChild(bulk);
 
-      var saveLabel = (inputMode === 'jisseki') ? 'この工種の実績を保存' : 'この工種の予定を保存';
+      var saveLabel = 'この工種を保存（予定・実績）';
       var save = el('button', 'save', saveLabel);
       save.onclick = function () {
-        syncLive();   // 表示中モードの値を配列へ反映
-        // 予定・実績の両方を送って保存（編集していない側もそのまま保存される）
+        syncLive();
         save.textContent = '✓ 保存しました'; save.classList.add('done');
         setTimeout(function () { save.textContent = saveLabel; save.classList.remove('done'); }, 1500);
         jsonp('action=saveYotei&' + q({ user: profile.displayName, genbaId: g.genbaId, kousyuId: k.kousyuId, weekStart: weekStart, yotei: (k.yotei || blank7()).join(','), jisseki: (k.jisseki || blank7()).join(',') }));
       };
-      box.appendChild(save);
+      body.appendChild(save);
       return box;
     }
 
