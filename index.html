@@ -178,10 +178,8 @@
       var left = el('div'); left.style.display = 'flex'; left.style.alignItems = 'center';
       var label = el('div', 'klabel', k.shumoku + '：' + (k.ginoukou || '（技能工未設定）'));
       var tag = el('span', 'tag');
-      var done = el('label', '');
-      done.style.cssText = 'margin-left:8px; font-size:12px; color:#2a7; white-space:nowrap; display:inline-flex; align-items:center; gap:3px; cursor:pointer; flex-shrink:0;';
-      var doneCb = document.createElement('input'); doneCb.type = 'checkbox'; doneCb.style.margin = '0';
-      done.appendChild(doneCb); done.appendChild(document.createTextNode('完了にする'));
+      var done = el('button', '', '✓ 完了にする');
+      done.style.cssText = 'margin-left:8px; padding:3px 10px; font-size:11px; border:1px solid #2a7; border-radius:6px; background:#fff; color:#2a7; white-space:nowrap; flex-shrink:0; cursor:pointer;';
       left.style.flexWrap = 'wrap'; left.style.rowGap = '4px';
       left.appendChild(label); left.appendChild(tag); left.appendChild(done);
       var right = el('div'); right.style.whiteSpace = 'nowrap'; right.style.flexShrink = '0';
@@ -198,9 +196,8 @@
           editHolder.style.display = 'block';
         } else { editHolder.style.display = 'none'; }
       };
-      doneCb.onchange = function () {
-        if (!doneCb.checked) return;
-        if (!window.confirm('「' + k.shumoku + '：' + (k.ginoukou || '技能工未設定') + '」を完了にします。\n画面から消えますがよろしいですか？')) { doneCb.checked = false; return; }
+      done.onclick = function () {
+        if (!window.confirm('「' + k.shumoku + '：' + (k.ginoukou || '技能工未設定') + '」を完了にします。\n画面から消えますがよろしいですか？')) return;
         // 先に画面から消す（サーバーは待たない＝速い）
         box.remove();
         var i = g.kousyu.indexOf(k); if (i >= 0) g.kousyu.splice(i, 1);
