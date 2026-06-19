@@ -142,10 +142,12 @@
         card.className = 'card ' + (has ? 'live' : 'pre');
       }
 
+      function removeCard() { if (card.parentNode) card.remove(); }
+
       var holder = el('div');
       var emptyNote = el('div', 'sub', '※ まだ工種がありません。下の「＋ 工種を追加」から登録してください。');
       if (!g.kousyu.length) holder.appendChild(emptyNote);
-      g.kousyu.forEach(function (k) { holder.appendChild(makeKousyu(g, k, recalcGenba)); });
+      g.kousyu.forEach(function (k) { holder.appendChild(makeKousyu(g, k, recalcGenba, removeCard)); });
       card.appendChild(holder);
 
       var toggle = el('button', 'addtoggle', '＋ 工種を追加');
@@ -157,7 +159,7 @@
             onAdded: function (newK) {
               if (emptyNote.parentNode) emptyNote.remove();
               g.kousyu.push(newK);
-              holder.appendChild(makeKousyu(g, newK, recalcGenba));
+              holder.appendChild(makeKousyu(g, newK, recalcGenba, removeCard));
               formHolder.style.display = 'none';
               recalcGenba();
             }
@@ -170,13 +172,15 @@
       return card;
     }
 
-    function makeKousyu(g, k, recalcGenba) {
+    function makeKousyu(g, k, recalcGenba, removeCard) {
       var box = el('div', 'kousyu');
       var row = el('div', 'krow');
       var left = el('div'); left.style.display = 'flex'; left.style.alignItems = 'center';
       var label = el('div', 'klabel', k.shumoku + '：' + (k.ginoukou || '（技能工未設定）'));
       var tag = el('span', 'tag');
       left.appendChild(label); left.appendChild(tag);
+      var right = el('div'); right.style.whiteSpace = 'nowrap'; right.style.flexShrink = '0';
+      var done = el('button', 'editlink', '完了'); done.style.color = '#2a7';
       var edit = el('button', 'editlink', '編集');
       var editHolder = el('div'); editHolder.style.display = 'none';
       edit.onclick = function () {
@@ -190,7 +194,26 @@
           editHolder.style.display = 'block';
         } else { editHolder.style.display = 'none'; }
       };
-      row.appendChild(left); row.appendChild(edit);
+      done.onclick = function () {
+        if (!window.confirm('「' + k.shumoku + '：' + (k.ginoukou || '技能工未設定') + '」を完了にします。\n画面から消えますがよろしいですか？')) return;
+        done.disabled = true;
+        jsonp('action=completeKousyu&' + q({ user: profile.displayName, kousyuId: k.kousyuId }), function (res) {
+          toast('✓ 工種を完了にしました');
+          box.remove();
+          var i = g.kousyu.indexOf(k); if (i >= 0) g.kousyu.splice(i, 1);
+          if (recalcGenba) recalcGenba();
+          if (res && res.remaining === 0) {
+            if (window.confirm('この工事を完工にしますか？\n（' + g.name + '）\n完工にすると一覧から消えます。')) {
+              jsonp('action=completeGenba&' + q({ user: profile.displayName, genbaId: g.genbaId }), function () {
+                toast('✓ 工事を完工にしました');
+                if (removeCard) removeCard();
+              });
+            }
+          }
+        });
+      };
+      right.appendChild(done); right.appendChild(edit);
+      row.appendChild(left); row.appendChild(right);
       box.appendChild(row); box.appendChild(editHolder);
 
       var days = el('div', 'days'); var cells = [];
@@ -310,15 +333,4 @@
 
     function cycle(btn) { var v = btn.dataset.val || ''; setCell(btn, v === '' ? '〇' : (v === '〇' ? '－' : '')); }
     function setCell(btn, v) { btn.dataset.val = v; btn.textContent = v === '' ? '・' : v; btn.className = 'cell' + (v === '〇' ? ' maru' : (v === '－' ? ' bar' : '')); }
-    function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
-    function opt(val, text) { var o = document.createElement('option'); o.value = val; o.textContent = text; return o; }
-    function setStatus(msg) { document.getElementById('status').textContent = msg; }
-    function toast(msg) {
-      var t = document.getElementById('toast');
-      if (!t) { t = el('div', 'toast'); t.id = 'toast'; document.body.appendChild(t); }
-      t.textContent = msg; t.classList.add('show');
-      clearTimeout(toast._t); toast._t = setTimeout(function () { t.classList.remove('show'); }, 1800);
-    }
-  </script>
-</body>
-</html>
+    fu
